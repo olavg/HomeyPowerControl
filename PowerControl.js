@@ -64,17 +64,15 @@ let originalTargetTemperatures = {};
 const originalTempsString = global.get('originalTargetTemperatures');
 if (originalTempsString) {
     try {
-        console.log('Prøver å parse originalTargetTemperatures:', originalTempsString);
         originalTargetTemperatures = JSON.parse(originalTempsString);
     } catch (e) {
         console.error('Kunne ikke parse originalTargetTemperatures:', e);
-        console.log('Tilbakestiller originalTargetTemperatures til en tomt objekt.');
         originalTargetTemperatures = {};
-        global.set('originalTargetTemperatures', JSON.stringify(originalTargetTemperatures));
     }
 } else {
     global.set('originalTargetTemperatures', JSON.stringify(originalTargetTemperatures));
 }
+
 // Funksjon for å hente fremtidige priser
 async function getFuturePrices(hours) {
     const prices = [];
@@ -226,6 +224,7 @@ async function controlWaterHeater(turnOn) {
     }
 }
 
+// Funksjon for å kontrollere en enkelt gulvvarmeenhet ved å justere måltemperaturen
 async function controlFloorHeating(device, turnOn) {
     try {
         if (device.capabilities.includes('target_temperature')) {
@@ -237,17 +236,17 @@ async function controlFloorHeating(device, turnOn) {
                 originalTargetTemperatures[deviceId] = currentTemp;
                 global.set('originalTargetTemperatures', JSON.stringify(originalTargetTemperatures));
             }
+            const originalTemp = originalTargetTemperatures[deviceId];
             if (turnOn) {
-                const originalTemp = originalTargetTemperatures[deviceId];
                 console.log(`- Gjenoppretter opprinnelig temperatur for '${device.name}': ${originalTemp}°C.`);
                 await device.setCapabilityValue('target_temperature', originalTemp);
                 console.log(`- Gulvvarmeenheten '${device.name}' er nå satt til opprinnelig temperatur: ${originalTemp}°C.`);
             } else {
-                // Sett måltemperaturen til en lav verdi for å "slå av" oppvarmingen
-                const setbackTemp = 5; // Juster denne verdien etter behov
-                console.log(`- Setter '${device.name}' til lav temperatur: ${setbackTemp}°C.`);
+                // Sett måltemperaturen til 5°C under opprinnelig temperatur
+                const setbackTemp = Math.max(originalTemp - 5, 5); // Sikrer at temperaturen ikke settes under 5°C
+                console.log(`- Reduserer temperaturen for '${device.name}' til ${setbackTemp}°C (5°C under opprinnelig).`);
                 await device.setCapabilityValue('target_temperature', setbackTemp);
-                console.log(`- Gulvvarmeenheten '${device.name}' er nå satt til lav temperatur: ${setbackTemp}°C.`);
+                console.log(`- Gulvvarmeenheten '${device.name}' er nå satt til redusert temperatur: ${setbackTemp}°C.`);
             }
         } else {
             console.error(`Gulvvarmeenheten '${device.name}' støtter ikke 'target_temperature'-kapabiliteten.`);
