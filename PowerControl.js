@@ -15,13 +15,14 @@ const isNightTime = currentHour >= 22 || currentHour < 5;
 
 // Enheter
 const devices = await Homey.devices.getDevices();
-const floorHeatingDevice = Object.values(devices).find(device => device.name === 'FloorHeating'); // Gulvvarme
 const waterHeaterDevice = Object.values(devices).find(device => device.name === 'WaterHeater'); // Varmtvannsbereder
 const powerUsageDevice = Object.values(devices).find(device => device.name === 'PowerUsage');
 const powerPriceDevice = Object.values(devices).find(device => device.name === 'PowerPrice');
 const carStateDevice = devices['CarStateDeviceID']; // Enhet som rapporterer bilens ladestatus (prosent)
 
-// Sjekk kritiske enheter
+// Samle alle gulvvarmeenhetene (antar at enhetsnavnene slutter med 'gulvvarme')
+const floorHeatingDevices = Object.values(devices).filter(device => device.name.endsWith('gulvvarme'));
+
 if (!powerPriceDevice || !powerUsageDevice) {
     console.error("Kritiske enheter som 'PowerPrice' eller 'PowerUsage' ble ikke funnet.");
     return;
@@ -32,8 +33,8 @@ if (!waterHeaterDevice) {
     return;
 }
 
-if (!floorHeatingDevice) {
-    console.error("Gulvvarmeenheten 'FloorHeating' ble ikke funnet.");
+if (floorHeatingDevices.length === 0) {
+    console.error("Ingen gulvvarmeenheter ble funnet.");
     return;
 }
 
@@ -45,12 +46,35 @@ if (!lastHeaterOnTimestamp) {
 }
 
 // Hent eller opprett globale variabler for gulvvarmen
-let lastFloorHeatingOnTimestamp = global.get('lastFloorHeatingOnTimestamp');
-if (!lastFloorHeatingOnTimestamp) {
-    global.set('lastFloorHeatingOnTimestamp', now.getTime());
-    lastFloorHeatingOnTimestamp = now.getTime();
+let lastFloorHeatingOnTimestamps = {};
+const lastFloorHeatingOnTimestampsString = global.get('lastFloorHeatingOnTimestamps');
+if (lastFloorHeatingOnTimestampsString) {
+    try {
+        lastFloorHeatingOnTimestamps = JSON.parse(lastFloorHeatingOnTimestampsString);
+    } catch (e) {
+        console.error('Kunne ikke parse lastFloorHeatingOnTimestamps:', e);
+        lastFloorHeatingOnTimestamps = {};
+    }
+} else {
+    global.set('lastFloorHeatingOnTimestamps', JSON.stringify(lastFloorHeatingOnTimestamps));
 }
 
+// Hent eller opprett globale variabler for opprinnelige måltemperaturer
+let originalTargetTemperatures = {};
+const originalTempsString = global.get('originalTargetTemperatures');
+if (originalTempsString) {
+    try {
+        console.log('Prøver å parse originalTargetTemperatures:', originalTempsString);
+        originalTargetTemperatures = JSON.parse(originalTempsString);
+    } catch (e) {
+        console.error('Kunne ikke parse originalTargetTemperatures:', e);
+        console.log('Tilbakestiller originalTargetTemperatures til en tomt objekt.');
+        originalTargetTemperatures = {};
+        global.set('originalTargetTemperatures', JSON.stringify(originalTargetTemperatures));
+    }
+} else {
+    global.set('originalTargetTemperatures', JSON.stringify(originalTargetTemperatures));
+}
 // Funksjon for å hente fremtidige priser
 async function getFuturePrices(hours) {
     const prices = [];
@@ -86,11 +110,11 @@ async function manageHeating() {
     if (isDinnerTime) {
         console.log('Middagstid: Slår av gulvvarme og varmtvannsbereder.');
         await controlWaterHeater(false);
-        await controlFloorHeating(false);
+        await controlAllFloorHeatings(false);
     } else if (currentPowerKW > maxPowerUsageKW) {
         console.log(`Høyt strømforbruk (${currentPowerKW.toFixed(2)} kW > ${maxPowerUsageKW} kW):`);
         await controlWaterHeater(false);
-        await controlFloorHeating(false);
+        await controlAllFloorHeatings(false);
     } else {
         await scheduleWaterHeater();
         await scheduleFloorHeating();
@@ -140,38 +164,50 @@ async function scheduleWaterHeater() {
 // Funksjon for å planlegge oppvarming av gulvvarmen
 async function scheduleFloorHeating() {
     const heatingPrices = await getFuturePrices(24);
-
-    // Beregn hvor lenge gulvvarmen har vært av
-    const lastOnTime = new Date(parseInt(lastFloorHeatingOnTimestamp));
-    const hoursSinceLastOn = (now - lastOnTime) / (1000 * 60 * 60);
+    const currentPrice = heatingPrices[0];
+    const validPrices = heatingPrices.filter(price => price !== null);
+    const averageHeatingPrice = validPrices.reduce((sum, price) => sum + price, 0) / validPrices.length;
 
     // Bestem maksimalt antall timer gulvvarmen kan være avhengig av tidspunktet på døgnet
     const maxContinuousOffHours = isNightTime ? maxContinuousOffHoursFloorHeatingNight : maxContinuousOffHoursFloorHeatingDay;
 
-    // Sjekker om gulvvarmen har vært av for lenge
-    if (hoursSinceLastOn >= maxContinuousOffHours) {
-        const currentPowerKW = powerUsageDevice.capabilitiesObj['measure_power']?.value / 1000 || 0;
-        if (currentPowerKW < maxPowerUsageKW) {
-            console.log('Slår PÅ gulvvarmen.');
-            await controlFloorHeating(true);
-            global.set('lastFloorHeatingOnTimestamp', now.getTime());
-        } else {
-            console.log('Strømforbruket er for høyt. Holder gulvvarmen AV.');
-            await controlFloorHeating(false);
-        }
-    } else {
-        // Basert på pris, bestem om gulvvarmen skal være på
-        const currentPrice = heatingPrices[0];
-        const validPrices = heatingPrices.filter(price => price !== null);
-        const averageHeatingPrice = validPrices.reduce((sum, price) => sum + price, 0) / validPrices.length;
+    for (const device of floorHeatingDevices) {
+        const deviceId = device.id;
 
-        if (currentPrice < averageHeatingPrice) {
-            console.log('Nåværende pris er under gjennomsnittet. Slår PÅ gulvvarmen.');
-            await controlFloorHeating(true);
-            global.set('lastFloorHeatingOnTimestamp', now.getTime());
+        // Hent eller opprett siste på-tidspunkt for denne enheten
+        let lastOnTimestamp = lastFloorHeatingOnTimestamps[deviceId];
+        if (!lastOnTimestamp) {
+            lastOnTimestamp = now.getTime();
+            lastFloorHeatingOnTimestamps[deviceId] = now.getTime();
+            global.set('lastFloorHeatingOnTimestamps', JSON.stringify(lastFloorHeatingOnTimestamps));
+        }
+
+        const lastOnTime = new Date(parseInt(lastOnTimestamp));
+        const hoursSinceLastOn = (now - lastOnTime) / (1000 * 60 * 60);
+
+        // Sjekk om enheten har vært av for lenge
+        if (hoursSinceLastOn >= maxContinuousOffHours) {
+            const currentPowerKW = powerUsageDevice.capabilitiesObj['measure_power']?.value / 1000 || 0;
+            if (currentPowerKW < maxPowerUsageKW) {
+                console.log(`Slår PÅ gulvvarmeenheten '${device.name}' (har vært av i ${hoursSinceLastOn.toFixed(2)} timer).`);
+                await controlFloorHeating(device, true);
+                lastFloorHeatingOnTimestamps[deviceId] = now.getTime();
+                global.set('lastFloorHeatingOnTimestamps', JSON.stringify(lastFloorHeatingOnTimestamps));
+            } else {
+                console.log(`Strømforbruket er for høyt. Holder gulvvarmeenheten '${device.name}' AV.`);
+                await controlFloorHeating(device, false);
+            }
         } else {
-            console.log('Nåværende pris er over gjennomsnittet. Holder gulvvarmen AV.');
-            await controlFloorHeating(false);
+            // Basert på pris, bestem om gulvvarmeenheten skal være på
+            if (currentPrice < averageHeatingPrice) {
+                console.log(`Nåværende pris er under gjennomsnittet. Slår PÅ gulvvarmeenheten '${device.name}'.`);
+                await controlFloorHeating(device, true);
+                lastFloorHeatingOnTimestamps[deviceId] = now.getTime();
+                global.set('lastFloorHeatingOnTimestamps', JSON.stringify(lastFloorHeatingOnTimestamps));
+            } else {
+                console.log(`Nåværende pris er over gjennomsnittet. Holder gulvvarmeenheten '${device.name}' AV.`);
+                await controlFloorHeating(device, false);
+            }
         }
     }
 }
@@ -190,21 +226,49 @@ async function controlWaterHeater(turnOn) {
     }
 }
 
-// Funksjon for å kontrollere gulvvarmen
-async function controlFloorHeating(turnOn) {
+async function controlFloorHeating(device, turnOn) {
     try {
-        if (floorHeatingDevice.capabilities.includes('onoff')) {
-            await floorHeatingDevice.setCapabilityValue('onoff', turnOn);
-            console.log(`- Gulvvarmen er nå slått ${turnOn ? 'PÅ' : 'AV'}.`);
+        if (device.capabilities.includes('target_temperature')) {
+            const deviceId = device.id;
+            // Lagre opprinnelig måltemperatur hvis den ikke allerede er lagret
+            if (originalTargetTemperatures[deviceId] === undefined) {
+                const currentTemp = device.capabilitiesObj['target_temperature'].value;
+                console.log(`- Lagrer opprinnelig temperatur for '${device.name}': ${currentTemp}°C.`);
+                originalTargetTemperatures[deviceId] = currentTemp;
+                global.set('originalTargetTemperatures', JSON.stringify(originalTargetTemperatures));
+            }
+            if (turnOn) {
+                const originalTemp = originalTargetTemperatures[deviceId];
+                console.log(`- Gjenoppretter opprinnelig temperatur for '${device.name}': ${originalTemp}°C.`);
+                await device.setCapabilityValue('target_temperature', originalTemp);
+                console.log(`- Gulvvarmeenheten '${device.name}' er nå satt til opprinnelig temperatur: ${originalTemp}°C.`);
+            } else {
+                // Sett måltemperaturen til en lav verdi for å "slå av" oppvarmingen
+                const setbackTemp = 5; // Juster denne verdien etter behov
+                console.log(`- Setter '${device.name}' til lav temperatur: ${setbackTemp}°C.`);
+                await device.setCapabilityValue('target_temperature', setbackTemp);
+                console.log(`- Gulvvarmeenheten '${device.name}' er nå satt til lav temperatur: ${setbackTemp}°C.`);
+            }
         } else {
-            console.error("Gulvvarmen støtter ikke 'onoff'-kapabiliteten.");
+            console.error(`Gulvvarmeenheten '${device.name}' støtter ikke 'target_temperature'-kapabiliteten.`);
         }
     } catch (error) {
-        console.error('Feil ved kontroll av gulvvarmen:', error);
+        console.error(`Feil ved kontroll av gulvvarmeenheten '${device.name}':`, error);
     }
 }
 
-// Funksjon for lading (uendret)
+// Funksjon for å slå av eller på alle gulvvarmeenheter
+async function controlAllFloorHeatings(turnOn) {
+    for (const device of floorHeatingDevices) {
+        await controlFloorHeating(device, turnOn);
+        if (turnOn) {
+            lastFloorHeatingOnTimestamps[device.id] = now.getTime();
+            global.set('lastFloorHeatingOnTimestamps', JSON.stringify(lastFloorHeatingOnTimestamps));
+        }
+    }
+}
+
+// Funksjon for lading
 async function manageCharging() {
     const chargingPrices = await getFuturePrices(chargingFutureHours);
     const validPrices = chargingPrices.filter(price => price !== null);
