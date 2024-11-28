@@ -10,8 +10,12 @@ const maxContinuousOffHoursFloorHeatingDay = 1; // Maksimalt av-tid for gulvvarm
 const maxContinuousOffHoursFloorHeatingNight = 2; // Maksimalt av-tid for gulvvarme om natten
 const now = new Date();
 const currentHour = now.getHours();
+const currentMinute = now.getMinutes();
 const isDinnerTime = currentHour === 16;
 const isNightTime = currentHour >= 22 || currentHour < 5;
+const highPriceDifferenceThreshold = 20; // 20%
+const staggerWindowHighDifference = [0, 5, 10]; // Minutter etter timens start
+const staggerWindowLowDifference = [50, 55, 0, 5, 10]; // Minutter før og etter timens start
 
 // Enheter
 const devices = await Homey.devices.getDevices();
@@ -73,6 +77,29 @@ if (originalTempsString) {
     global.set('originalTargetTemperatures', JSON.stringify(originalTargetTemperatures));
 }
 
+// Tilordne spesifikke tidspunkter ut fra strømpris
+
+let staggerMinutes;
+if (priceDifferencePercent >= highPriceDifferenceThreshold) {
+    staggerMinutes = staggerWindowHighDifference;
+    console.log('Stor prisforskjell, bruker kortere tidsvindu for påslag.');
+} else {
+    staggerMinutes = staggerWindowLowDifference;
+    console.log('Liten prisforskjell, bruker lengre tidsvindu for påslag.');
+}
+
+let deviceStaggerMinutes = global.get('deviceStaggerMinutes');
+if (!deviceStaggerMinutes || Object.keys(deviceStaggerMinutes).length === 0) {
+    deviceStaggerMinutes = {};
+    floorHeatingDevices.forEach((device, index) => {
+        const minuteIndex = index % staggerMinutes.length;
+        deviceStaggerMinutes[device.id] = staggerMinutes[minuteIndex];
+    });
+    // Lagre til global variabel
+    global.set('deviceStaggerMinutes', deviceStaggerMinutes);
+}
+
+
 // Funksjon for å hente fremtidige priser
 async function getFuturePrices(hours) {
     const prices = [];
@@ -104,6 +131,35 @@ async function manageHeating() {
     console.log(`Nåværende strømpris: ${currentPrice} NOK/kWh`);
     console.log(`Gjennomsnittspris neste ${heatingFutureHours} timer: ${averageHeatingPrice.toFixed(4)} NOK/kWh`);
     console.log(`Nåværende strømforbruk: ${currentPowerKW.toFixed(2)} kW`);
+
+    // Beregn prisforskjell i prosent
+    const priceDifferencePercent = ((averageHeatingPrice - currentPrice) / averageHeatingPrice) * 100;
+    console.log(`Prisforskjell: ${priceDifferencePercent.toFixed(2)}%`);
+
+    // Bestem tidsvindu for påslag
+    const highPriceDifferenceThreshold = 20; // 20%
+    const staggerWindowHighDifference = [0, 5, 10]; // Minutter etter timens start
+    const staggerWindowLowDifference = [50, 55, 0, 5, 10]; // Minutter før og etter timens start
+
+    let staggerMinutes;
+    if (priceDifferencePercent >= highPriceDifferenceThreshold) {
+        staggerMinutes = staggerWindowHighDifference;
+        console.log('Stor prisforskjell, bruker kortere tidsvindu for påslag.');
+    } else {
+        staggerMinutes = staggerWindowLowDifference;
+        console.log('Liten prisforskjell, bruker lengre tidsvindu for påslag.');
+    }
+
+    // Tilordne enheter til minutter hvis ikke allerede gjort
+    if (!deviceStaggerMinutes || Object.keys(deviceStaggerMinutes).length === 0) {
+        deviceStaggerMinutes = {};
+        floorHeatingDevices.forEach((device, index) => {
+            const minuteIndex = index % staggerMinutes.length;
+            deviceStaggerMinutes[device.id] = staggerMinutes[minuteIndex];
+        });
+        // Lagre til global variabel
+        global.set('deviceStaggerMinutes', deviceStaggerMinutes);
+    }
 
     if (isDinnerTime) {
         console.log('Middagstid: Slår av gulvvarme og varmtvannsbereder.');
@@ -142,20 +198,56 @@ async function scheduleWaterHeater() {
     const lastOnTime = new Date(parseInt(lastHeaterOnTimestamp));
     const hoursSinceLastOn = (now - lastOnTime) / (1000 * 60 * 60);
 
-    // Sjekker om nåværende time er blant de valgte oppvarmingstimene eller om den har vært av for lenge
-    if (heatingHours.includes(currentHour) || hoursSinceLastOn >= maxContinuousOffHoursWaterHeater) {
-        const currentPowerKW = powerUsageDevice.capabilitiesObj['measure_power']?.value / 1000 || 0;
-        if (currentPowerKW < maxPowerUsageKW) {
-            console.log('Slår PÅ varmtvannsberederen.');
-            await controlWaterHeater(true);
-            global.set('lastHeaterOnTimestamp', now.getTime());
+    // Beregn prisforskjell i prosent
+    const currentPrice = heatingPrices[0];
+    const averageHeatingPrice = validPrices.reduce((sum, item) => sum + item.price, 0) / validPrices.length;
+    const priceDifferencePercent = ((averageHeatingPrice - currentPrice) / averageHeatingPrice) * 100;
+    console.log(`Prisforskjell for varmtvannsbereder: ${priceDifferencePercent.toFixed(2)}%`);
+
+    // Bestem tidsvindu for påslag
+    const highPriceDifferenceThreshold = 20; // 20%
+    const staggerWindowHighDifference = [0, 5, 10]; // Minutter etter timens start
+    const staggerWindowLowDifference = [50, 55, 0, 5, 10]; // Minutter før og etter timens start
+
+    let staggerMinutes;
+    if (priceDifferencePercent >= highPriceDifferenceThreshold) {
+        staggerMinutes = staggerWindowHighDifference;
+        console.log('Stor prisforskjell, bruker kortere tidsvindu for påslag av varmtvannsbereder.');
+    } else {
+        staggerMinutes = staggerWindowLowDifference;
+        console.log('Liten prisforskjell, bruker lengre tidsvindu for påslag av varmtvannsbereder.');
+    }
+
+    // Tildelt minutt for varmtvannsberederen
+    let waterHeaterStaggerMinute = global.get('waterHeaterStaggerMinute');
+    if (waterHeaterStaggerMinute === undefined || waterHeaterStaggerMinute === null) {
+        // Tildel et tilfeldig minutt fra staggerMinutes
+        const randomIndex = Math.floor(Math.random() * staggerMinutes.length);
+        waterHeaterStaggerMinute = staggerMinutes[randomIndex];
+        global.set('waterHeaterStaggerMinute', waterHeaterStaggerMinute);
+    }
+
+    const nowMinute = now.getMinutes();
+
+    // Sjekk om det er tid for å kontrollere varmtvannsberederen
+    if (nowMinute === waterHeaterStaggerMinute) {
+        // Sjekker om nåværende time er blant de valgte oppvarmingstimene eller om den har vært av for lenge
+        if (heatingHours.includes(currentHour) || hoursSinceLastOn >= maxContinuousOffHoursWaterHeater) {
+            const currentPowerKW = powerUsageDevice.capabilitiesObj['measure_power']?.value / 1000 || 0;
+            if (currentPowerKW < maxPowerUsageKW) {
+                console.log('Slår PÅ varmtvannsberederen.');
+                await controlWaterHeater(true);
+                global.set('lastHeaterOnTimestamp', now.getTime());
+            } else {
+                console.log('Strømforbruket er for høyt. Slår AV varmtvannsberederen.');
+                await controlWaterHeater(false);
+            }
         } else {
-            console.log('Strømforbruket er for høyt. Slår AV varmtvannsberederen.');
+            console.log('Slår AV varmtvannsberederen.');
             await controlWaterHeater(false);
         }
     } else {
-        console.log('Slår AV varmtvannsberederen.');
-        await controlWaterHeater(false);
+        console.log(`Ikke tid for å kontrollere varmtvannsberederen ennå. Tildelt minutt: ${waterHeaterStaggerMinute}`);
     }
 }
 
@@ -166,46 +258,83 @@ async function scheduleFloorHeating() {
     const validPrices = heatingPrices.filter(price => price !== null);
     const averageHeatingPrice = validPrices.reduce((sum, price) => sum + price, 0) / validPrices.length;
 
+    // Beregn prisforskjell i prosent
+    const priceDifferencePercent = ((averageHeatingPrice - currentPrice) / averageHeatingPrice) * 100;
+    console.log(`Prisforskjell for gulvvarme: ${priceDifferencePercent.toFixed(2)}%`);
+
+    // Bestem tidsvindu for påslag
+    const highPriceDifferenceThreshold = 20; // 20%
+    const staggerWindowHighDifference = [0, 5, 10]; // Minutter etter timens start
+    const staggerWindowLowDifference = [50, 55, 0, 5, 10]; // Minutter før og etter timens start
+
+    let staggerMinutes;
+    if (priceDifferencePercent >= highPriceDifferenceThreshold) {
+        staggerMinutes = staggerWindowHighDifference;
+        console.log('Stor prisforskjell, bruker kortere tidsvindu for påslag av gulvvarme.');
+    } else {
+        staggerMinutes = staggerWindowLowDifference;
+        console.log('Liten prisforskjell, bruker lengre tidsvindu for påslag av gulvvarme.');
+    }
+
+    // Tilordne enheter til minutter hvis ikke allerede gjort
+    if (!deviceStaggerMinutes || Object.keys(deviceStaggerMinutes).length === 0) {
+        deviceStaggerMinutes = {};
+        floorHeatingDevices.forEach((device, index) => {
+            const minuteIndex = index % staggerMinutes.length;
+            deviceStaggerMinutes[device.id] = staggerMinutes[minuteIndex];
+        });
+        // Lagre til global variabel
+        global.set('deviceStaggerMinutes', deviceStaggerMinutes);
+    }
+
+    const nowMinute = now.getMinutes();
+
     // Bestem maksimalt antall timer gulvvarmen kan være avhengig av tidspunktet på døgnet
     const maxContinuousOffHours = isNightTime ? maxContinuousOffHoursFloorHeatingNight : maxContinuousOffHoursFloorHeatingDay;
 
     for (const device of floorHeatingDevices) {
         const deviceId = device.id;
+        const deviceStaggerMinute = deviceStaggerMinutes[deviceId];
 
-        // Hent eller opprett siste på-tidspunkt for denne enheten
-        let lastOnTimestamp = lastFloorHeatingOnTimestamps[deviceId];
-        if (!lastOnTimestamp) {
-            lastOnTimestamp = now.getTime();
-            lastFloorHeatingOnTimestamps[deviceId] = now.getTime();
-            global.set('lastFloorHeatingOnTimestamps', JSON.stringify(lastFloorHeatingOnTimestamps));
-        }
-
-        const lastOnTime = new Date(parseInt(lastOnTimestamp));
-        const hoursSinceLastOn = (now - lastOnTime) / (1000 * 60 * 60);
-
-        // Sjekk om enheten har vært av for lenge
-        if (hoursSinceLastOn >= maxContinuousOffHours) {
-            const currentPowerKW = powerUsageDevice.capabilitiesObj['measure_power']?.value / 1000 || 0;
-            if (currentPowerKW < maxPowerUsageKW) {
-                console.log(`Slår PÅ gulvvarmeenheten '${device.name}' (har vært av i ${hoursSinceLastOn.toFixed(2)} timer).`);
-                await controlFloorHeating(device, true);
+        // Sjekk om det er tid for å kontrollere enheten
+        if (nowMinute === deviceStaggerMinute) {
+            // Hent eller opprett siste på-tidspunkt for denne enheten
+            let lastOnTimestamp = lastFloorHeatingOnTimestamps[deviceId];
+            if (!lastOnTimestamp) {
+                lastOnTimestamp = now.getTime();
                 lastFloorHeatingOnTimestamps[deviceId] = now.getTime();
                 global.set('lastFloorHeatingOnTimestamps', JSON.stringify(lastFloorHeatingOnTimestamps));
+            }
+
+            const lastOnTime = new Date(parseInt(lastOnTimestamp));
+            const hoursSinceLastOn = (now - lastOnTime) / (1000 * 60 * 60);
+
+            // Sjekk om enheten har vært av for lenge
+            if (hoursSinceLastOn >= maxContinuousOffHours) {
+                const currentPowerKW = powerUsageDevice.capabilitiesObj['measure_power']?.value / 1000 || 0;
+                if (currentPowerKW < maxPowerUsageKW) {
+                    console.log(`Slår PÅ gulvvarmeenheten '${device.name}' (har vært av i ${hoursSinceLastOn.toFixed(2)} timer).`);
+                    await controlFloorHeating(device, true);
+                    lastFloorHeatingOnTimestamps[deviceId] = now.getTime();
+                    global.set('lastFloorHeatingOnTimestamps', JSON.stringify(lastFloorHeatingOnTimestamps));
+                } else {
+                    console.log(`Strømforbruket er for høyt. Holder gulvvarmeenheten '${device.name}' AV.`);
+                    await controlFloorHeating(device, false);
+                }
             } else {
-                console.log(`Strømforbruket er for høyt. Holder gulvvarmeenheten '${device.name}' AV.`);
-                await controlFloorHeating(device, false);
+                // Basert på pris, bestem om gulvvarmeenheten skal være på
+                if (currentPrice < averageHeatingPrice) {
+                    console.log(`Nåværende pris er under gjennomsnittet. Slår PÅ gulvvarmeenheten '${device.name}'.`);
+                    await controlFloorHeating(device, true);
+                    lastFloorHeatingOnTimestamps[deviceId] = now.getTime();
+                    global.set('lastFloorHeatingOnTimestamps', JSON.stringify(lastFloorHeatingOnTimestamps));
+                } else {
+                    console.log(`Nåværende pris er over gjennomsnittet. Holder gulvvarmeenheten '${device.name}' AV.`);
+                    await controlFloorHeating(device, false);
+                }
             }
         } else {
-            // Basert på pris, bestem om gulvvarmeenheten skal være på
-            if (currentPrice < averageHeatingPrice) {
-                console.log(`Nåværende pris er under gjennomsnittet. Slår PÅ gulvvarmeenheten '${device.name}'.`);
-                await controlFloorHeating(device, true);
-                lastFloorHeatingOnTimestamps[deviceId] = now.getTime();
-                global.set('lastFloorHeatingOnTimestamps', JSON.stringify(lastFloorHeatingOnTimestamps));
-            } else {
-                console.log(`Nåværende pris er over gjennomsnittet. Holder gulvvarmeenheten '${device.name}' AV.`);
-                await controlFloorHeating(device, false);
-            }
+            console.log(`Ikke tid for å kontrollere enheten '${device.name}' ennå. Tildelt minutt: ${deviceStaggerMinute}`);
         }
     }
 }
@@ -273,18 +402,72 @@ async function manageCharging() {
     const validPrices = chargingPrices.filter(price => price !== null);
 
     const currentChargeLevel = carStateDevice?.capabilitiesObj['measure_battery']?.value || 0;
-    const hoursToCharge = Math.ceil((carTargetCharge - currentChargeLevel) / 10);
+    const hoursToCharge = Math.ceil((carTargetCharge - currentChargeLevel) / 10); // Antar 10% lading per time
 
-    if (currentChargeLevel < carTargetCharge) {
+    if (currentChargeLevel >= carTargetCharge) {
+        console.log('Bilen er allerede ladet til ønsket nivå.');
+        return;
+    }
+
+    // Beregn prisforskjell i prosent
+    const currentPrice = chargingPrices[0];
+    const averageChargingPrice = validPrices.reduce((sum, price) => sum + price, 0) / validPrices.length;
+    const priceDifferencePercent = ((averageChargingPrice - currentPrice) / averageChargingPrice) * 100;
+    console.log(`Prisforskjell for lading: ${priceDifferencePercent.toFixed(2)}%`);
+
+    // Bestem tidsvindu for lading
+    const highPriceDifferenceThreshold = 20; // 20%
+    const staggerWindowHighDifference = [0, 5, 10]; // Minutter etter timens start
+    const staggerWindowLowDifference = [50, 55, 0, 5, 10]; // Minutter før og etter timens start
+
+    let staggerMinutes;
+    if (priceDifferencePercent >= highPriceDifferenceThreshold) {
+        staggerMinutes = staggerWindowHighDifference;
+        console.log('Stor prisforskjell, bruker kortere tidsvindu for lading.');
+    } else {
+        staggerMinutes = staggerWindowLowDifference;
+        console.log('Liten prisforskjell, bruker lengre tidsvindu for lading.');
+    }
+
+    // Tildelt minutt for lading
+    let chargingStaggerMinute = global.get('chargingStaggerMinute');
+    if (chargingStaggerMinute === undefined || chargingStaggerMinute === null) {
+        // Tildel et tilfeldig minutt fra staggerMinutes
+        const randomIndex = Math.floor(Math.random() * staggerMinutes.length);
+        chargingStaggerMinute = staggerMinutes[randomIndex];
+        global.set('chargingStaggerMinute', chargingStaggerMinute);
+    }
+
+    const nowMinute = now.getMinutes();
+
+    // Sjekk om det er tid for å kontrollere ladingen
+    if (nowMinute === chargingStaggerMinute) {
+        // Bestem de beste ladetimene
         const sortedPrices = chargingPrices
             .slice(0, 24 - currentHour + carChargeEndHour)
-            .map((price, index) => ({ price, index }))
+            .map((price, index) => ({ price, hour: (currentHour + index) % 24 }))
             .sort((a, b) => a.price - b.price);
 
-        const bestChargingHours = sortedPrices.slice(0, hoursToCharge).map(hour => hour.index);
-        console.log(`Beste timer for lading: ${bestChargingHours.map(hour => `Time ${hour}`).join(', ')}`);
+        const bestChargingHours = sortedPrices.slice(0, hoursToCharge).map(item => item.hour);
+
+        console.log(`Beste timer for lading: ${bestChargingHours.map(hour => `Time ${hour}`).join(', ')}.`);
+
+        // Sjekk om nåværende time er blant de beste ladetimene
+        if (bestChargingHours.includes(currentHour)) {
+            const currentPowerKW = powerUsageDevice.capabilitiesObj['measure_power']?.value / 1000 || 0;
+            if (currentPowerKW < maxPowerUsageKW) {
+                console.log('Starter lading av bilen.');
+                await controlCharging(true); // Funksjon for å starte lading
+            } else {
+                console.log('Strømforbruket er for høyt. Stopper lading av bilen.');
+                await controlCharging(false); // Funksjon for å stoppe lading
+            }
+        } else {
+            console.log('Dette er ikke en av de beste ladetimene. Stopper lading av bilen.');
+            await controlCharging(false); // Funksjon for å stoppe lading
+        }
     } else {
-        console.log('Bilen er allerede ladet til ønsket nivå.');
+        console.log(`Ikke tid for å kontrollere ladingen ennå. Tildelt minutt: ${chargingStaggerMinute}`);
     }
 }
 
