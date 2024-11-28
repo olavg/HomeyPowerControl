@@ -127,6 +127,7 @@ async function manageHeating() {
     const currentPrice = heatingPrices[0];
     const validPrices = heatingPrices.filter(price => price !== null);
     const averageHeatingPrice = validPrices.reduce((sum, price) => sum + price, 0) / validPrices.length;
+    const priceDifferencePercent = ((currentPrice - averageHeatingPrice) / averageHeatingPrice) * 100;
 
     console.log(`Nåværende strømpris: ${currentPrice} NOK/kWh`);
     console.log(`Gjennomsnittspris neste ${heatingFutureHours} timer: ${averageHeatingPrice.toFixed(4)} NOK/kWh`);
