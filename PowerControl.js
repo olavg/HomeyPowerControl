@@ -78,6 +78,12 @@ if (originalTempsString) {
 }
 
 // Tilordne spesifikke tidspunkter ut fra strømpris
+const heatingPrices = await getFuturePrices(24);
+const currentPrice = heatingPrices[0];
+const validPrices = heatingPrices.filter(price => price !== null);
+const averageHeatingPrice = validPrices.reduce((sum, price) => sum + price, 0) / validPrices.length;
+
+const priceDifferencePercent = ((averageHeatingPrice - currentPrice) / averageHeatingPrice) * 100;
 
 let staggerMinutes;
 if (priceDifferencePercent >= highPriceDifferenceThreshold) {
@@ -134,7 +140,6 @@ async function manageHeating() {
     console.log(`Nåværende strømforbruk: ${currentPowerKW.toFixed(2)} kW`);
 
     // Beregn prisforskjell i prosent
-    const priceDifferencePercent = ((averageHeatingPrice - currentPrice) / averageHeatingPrice) * 100;
     console.log(`Prisforskjell: ${priceDifferencePercent.toFixed(2)}%`);
 
     // Bestem tidsvindu for påslag
