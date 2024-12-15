@@ -1,7 +1,7 @@
 import paho.mqtt.client as mqtt
 
 # Define your broker address (could be localhost or an IP)
-BROKER = "your_mqtt_broker_address"
+BROKER = "192.168.86.54"
 
 # Callback when the client receives a CONNACK response from the server
 def on_connect(client, userdata, flags, rc):
