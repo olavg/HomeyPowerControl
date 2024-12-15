@@ -34,6 +34,7 @@ def reboot_ams_reader():
     # subprocess.run(["sudo", "systemctl", "restart", "ams-reader.service"])
 
 def main():
+    global LAST_ACTIVITY_TIME
     client = mqtt.Client()
     client.on_connect = on_connect
     client.on_message = on_message
