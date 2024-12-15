@@ -38,7 +38,7 @@ current_power_usage = None
 heating_prices = None
 expensive_hours = None
 
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, rc=''):
     if rc == 0:
         print("Connected to MQTT Broker!")
         # Subscribe to required topics
