@@ -11,6 +11,8 @@ def on_connect(client, userdata, flags, rc):
         print("Connected to MQTT broker.")
         # Subscribe to the consumption topic
         client.subscribe("ams/meter/import/active")
+        client.subscribe("ams/price/#")  # This will subscribe to all price intervals
+
     else:
         print("Connection failed with code {}".format(rc))
 
