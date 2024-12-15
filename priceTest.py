@@ -21,10 +21,16 @@ def on_message(client, userdata, msg):
     topic = msg.topic
     payload = msg.payload.decode("utf-8")
 
-    if topic == "ams/meter/import/active":
-        # Update last activity time whenever we get new consumption data
-        LAST_ACTIVITY_TIME = time.time()
+    if topic.startswith("ams/price/"):
+        # For example, "ams/price/0", "ams/price/1", etc.
+        # You can extract the hour/index from the topic:
+        hour = topic.split("/")[-1]
+        print(f"Price for hour {hour} is: {payload}")
+    
+    # Handle power consumption
+    elif topic == "ams/meter/import/active":
         print(f"Current power consumption: {payload} Watts")
+
 
 def reboot_ams_reader():
     print("No activity for 5 minutes. Rebooting AMS reader now...")
