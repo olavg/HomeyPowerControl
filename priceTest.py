@@ -25,13 +25,18 @@ def on_message(client, userdata, msg):
         print(f"Current power consumption: {payload} Watts")
 
 def reboot_ams_reader():
-    # This function should contain the logic needed to reboot your AMS reader.
-    # This might be sending a command over SSH, or running a local script, etc.
-    # Example: run a script called "reboot_ams.sh" that handles the reboot process.
-    # subprocess.run(["/path/to/reboot_ams.sh"])
     print("No activity for 5 minutes. Rebooting AMS reader now...")
-    # Example: If the AMS reader is a device connected via a local command:
-    # subprocess.run(["sudo", "systemctl", "restart", "ams-reader.service"])
+    try:
+        # Assuming GET request to the REBOOT_URL triggers a reboot.
+        # If it's a button on a web page that triggers reboot, and not just a GET request,
+        # you may need to replicate that behavior (e.g., a POST request or extra parameters).
+        response = requests.get(REBOOT_URL, timeout=5)
+        if response.status_code == 200:
+            print("Reboot request sent successfully.")
+        else:
+            print(f"Reboot request failed with status code: {response.status_code}")
+    except requests.RequestException as e:
+        print(f"Reboot request encountered an error: {e}")
 
 def main():
     global LAST_ACTIVITY_TIME
