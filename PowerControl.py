@@ -4,7 +4,7 @@ import paho.mqtt.client as mqtt
 from datetime import datetime
 
 # Configuration
-MQTT_BROKER = "192.168.1.10"     # Replace with your broker's IP/hostname
+MQTT_BROKER = "192.168.86.54"     # Replace with your broker's IP/hostname
 MQTT_PORT = 1883
 MQTT_KEEPALIVE = 60
 
