@@ -1,78 +1,56 @@
+import os
 import paho.mqtt.client as mqtt
 import time
 import subprocess
 import requests
-from entsoe import EntsoePandasClient
-import pandas as pd
 from datetime import datetime, timedelta
-import os
+from entsoe import EntsoePandasClient
+from dotenv import load_dotenv
+import threading
+import pytz
+import logging
 
-# Configuration
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler("priceTest.log"),
+        logging.StreamHandler()
+    ]
+)
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Retrieve the API key
+ENTSOE_API_KEY = os.getenv('ENTSOE_API_KEY')
+
+if not ENTSOE_API_KEY:
+    logging.error("No ENTSOE_API_KEY found in environment variables.")
+    raise ValueError("No ENTSOE_API_KEY found in environment variables.")
+
+# Define your MQTT broker address
 BROKER = "192.168.86.54"
 REBOOT_URL = "http://192.168.86.34/configuration"
-API_KEY = os.getenv('ENTSOE_API_KEY')  # Ensure this environment variable is set
-if not API_KEY:
-    raise ValueError("No ENTSO-E API key found. Set the ENTSOE_API_KEY environment variable.")
-BIDDING_ZONE = '10YNO-2--------U'  # Correct bidding zone code for NO_2
-TIMEZONE = 'Europe/Oslo'  # Adjust if necessary
-
-# Initialize variables
 LAST_ACTIVITY_TIME = time.time()
+
+# Store prices by hour index (0-23)
 prices = {}
-last_consumption = None
+last_consumption = None  # store the most recent consumption in Watts
 
-def get_entsoe_prices(api_key, bidding_zone, start, end):
-    """
-    Fetch day-ahead electricity prices from ENTSO-E for a specific bidding zone.
-
-    Parameters:
-    - api_key (str): Your ENTSO-E API key.
-    - bidding_zone (str): ENTSO-E bidding zone code.
-    - start (pd.Timestamp): Start time with timezone.
-    - end (pd.Timestamp): End time with timezone.
-
-    Returns:
-    - pd.Series: Series with timestamps as index and prices (EUR/kWh) as values.
-    """
-    client = EntsoePandasClient(api_key=api_key)
-    try:
-        prices = client.query_day_ahead_prices(bidding_zone, start=start, end=end)
-        # Convert EUR/MWh to EUR/kWh
-        prices_kwh = prices / 1000.0
-        return prices_kwh
-    except Exception as e:
-        print(f"Error fetching prices: {e}")
-        return pd.Series()
-
-def update_prices():
-    """
-    Update the global prices dictionary with the latest day-ahead prices.
-    """
-    global prices
-    client = EntsoePandasClient(api_key=API_KEY)
-    now = datetime.now(tz=pd.Timestamp.now(tz=TIMEZONE).tz)
-    # Fetch prices for today and the next day to ensure coverage
-    start = pd.Timestamp(now.date(), tz=TIMEZONE)
-    end = start + timedelta(days=2)
-    price_series = get_entsoe_prices(API_KEY, BIDDING_ZONE, start=start, end=end)
-    if not price_series.empty:
-        # Convert the Pandas Series into a dictionary keyed by date and hour (e.g., "2024-12-16_14")
-        for timestamp, price in price_series.iteritems():
-            hour = timestamp.hour
-            date = timestamp.date()
-            prices_key = f"{date}_{hour}"
-            prices[prices_key] = price
-        print("Prices updated from ENTSO-E.")
-    else:
-        print("Failed to update prices from ENTSO-E.")
+# Define your local timezone
+local_timezone = pytz.timezone('Europe/Oslo')  # Adjust if different
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        print("Connected to MQTT broker.")
+        logging.info("Connected to MQTT broker.")
+        # Subscribe to the consumption topic
         client.subscribe("ams/meter/import/active")
-        # No longer subscribing to 'ams/price/#' since we're getting prices directly
+        # If you still want to subscribe to price topics via MQTT, uncomment below
+        # client.subscribe("ams/price/#")
     else:
-        print(f"Connection failed with code {rc}")
+        logging.error(f"Connection failed with code {rc}")
 
 def on_message(client, userdata, msg):
     global LAST_ACTIVITY_TIME, last_consumption, prices
@@ -83,44 +61,96 @@ def on_message(client, userdata, msg):
     LAST_ACTIVITY_TIME = time.time()
 
     if topic.startswith("ams/price/"):
-        # If you still receive price data via MQTT, handle it here if needed
-        pass
+        hour = topic.split("/")[-1]
+        # Convert payload to float if it’s numeric
+        try:
+            price = float(payload)
+            prices[hour] = price
+            logging.info(f"Price for hour {hour}: {price} (currency per kWh)")
+        except ValueError:
+            logging.warning(f"Received non-numeric price value for hour {hour}: {payload}")
+
     elif topic == "ams/meter/import/active":
         try:
             consumption = float(payload)  # in Watts
             last_consumption = consumption
-            print(f"Current power consumption: {consumption} Watts")
-            
-            # Perform calculations based on current time and price
-            current_time = datetime.now(tz=pd.Timestamp.now(tz=TIMEZONE).tz)
-            current_hour = current_time.hour
-            current_date = current_time.date()
-            prices_key = f"{current_date}_{current_hour}"
-            current_price = prices.get(prices_key, None)
-            if current_price is not None:
+            logging.info(f"Current power consumption: {consumption} Watts")
+
+            # Get current time in local timezone
+            current_time_local = datetime.now(local_timezone)
+            current_hour = current_time_local.hour
+            hour_str = str(current_hour)
+            if hour_str in prices:
+                current_price = prices[hour_str]
                 consumption_kw = consumption / 1000.0
                 cost_per_hour = consumption_kw * current_price
-                print(f"At current consumption, cost per hour: {cost_per_hour:.4f} EUR")
-                
-                # Example decision-making based on thresholds
+                logging.info(f"At current consumption, cost per hour: {cost_per_hour:.2f} currency units.")
+
+                # Example threshold action
                 if current_price > 0.50 and consumption_kw > 2.0:
-                    print("High price and high consumption detected! Consider taking action.")
-                    # Implement action here (e.g., reduce load, send notification, etc.)
+                    logging.warning("High price and high consumption detected! Consider taking action now.")
+                    # Add your logic here (e.g., send a notification, reduce load, etc.)
             else:
-                print("Price data not available for the current time.")
+                logging.warning("No price data available for the current hour yet.")
+
         except ValueError:
-            print(f"Received non-numeric consumption value: {payload}")
+            logging.warning(f"Received non-numeric consumption value: {payload}")
 
 def reboot_ams_reader():
-    print("No activity for 5 minutes. Rebooting AMS reader now...")
+    logging.info("No activity for 5 minutes. Rebooting AMS reader now...")
     try:
         response = requests.get(REBOOT_URL, timeout=5)
         if response.status_code == 200:
-            print("Reboot request sent successfully.")
+            logging.info("Reboot request sent successfully.")
         else:
-            print(f"Reboot request failed with status code: {response.status_code}")
+            logging.error(f"Reboot request failed with status code: {response.status_code}")
     except requests.RequestException as e:
-        print(f"Reboot request encountered an error: {e}")
+        logging.error(f"Reboot request encountered an error: {e}")
+
+def collect_entsoe_prices():
+    """
+    Collect day-ahead prices from ENTSO-E for NO_2 bidding zone.
+    """
+    client_entsoe = EntsoePandasClient(api_key=ENTSOE_API_KEY)
+
+    # Define the time range for which to collect prices
+    # ENTSO-E day-ahead prices are typically published daily
+    end_time = datetime.now(pytz.utc)
+    start_time = end_time - timedelta(days=1)
+
+    # Replace with your actual bidding zone code for NO_2
+    bidding_zone = '10YNO-2---T'  # Verify this code from ENTSO-E documentation
+
+    try:
+        # Query day-ahead prices
+        prices_series = client_entsoe.query_day_ahead_prices(bidding_zone, start=start_time, end=end_time)
+        # Convert to dictionary with hour as key (0-23) in local time
+        global prices
+        prices = {}
+        for ts, price in prices_series.iteritems():
+            # Convert UTC timestamp to local timezone
+            ts_local = ts.tz_convert(local_timezone)
+            hour = ts_local.hour
+            prices[str(hour)] = float(price)
+        
+        logging.info("Successfully fetched ENTSO-E day-ahead prices:")
+        for hour in sorted(prices.keys(), key=lambda x: int(x)):
+            logging.info(f"Hour {hour}: {prices[hour]} currency units per kWh")
+    except Exception as e:
+        logging.error(f"Error fetching ENTSO-E prices: {e}")
+
+def schedule_price_updates():
+    """
+    Schedule price updates to run daily at a specified time (e.g., midnight).
+    """
+    while True:
+        current_time = datetime.now(local_timezone)
+        # Define the next update time (e.g., next midnight)
+        next_update = (current_time + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        wait_seconds = (next_update - current_time).total_seconds()
+        logging.info(f"Scheduled next price update in {wait_seconds / 3600:.2f} hours.")
+        time.sleep(wait_seconds)
+        collect_entsoe_prices()
 
 def main():
     global LAST_ACTIVITY_TIME
@@ -128,32 +158,29 @@ def main():
     client.on_connect = on_connect
     client.on_message = on_message
 
-    # If MQTT broker requires authentication:
+    # If your MQTT broker requires authentication:
     # client.username_pw_set("username", "password")
 
     client.connect(BROKER, 1883, 60)
     client.loop_start()
 
-    # Initial price update
-    update_prices()
+    # Collect ENTSO-E prices initially
+    collect_entsoe_prices()
+
+    # Start a separate thread to schedule daily price updates
+    price_thread = threading.Thread(target=schedule_price_updates, daemon=True)
+    price_thread.start()
 
     try:
         while True:
-            current_time = time.time()
-            elapsed = current_time - LAST_ACTIVITY_TIME
+            current_time_epoch = time.time()
+            elapsed = current_time_epoch - LAST_ACTIVITY_TIME
             if elapsed > 300:  # 5 minutes
                 reboot_ams_reader()
-                # After reboot, reset the timestamp to avoid repeated reboots
                 LAST_ACTIVITY_TIME = time.time()
-            
-            # Schedule price updates at a specific time, e.g., midnight local time
-            now = datetime.now(tz=pd.Timestamp.now(tz=TIMEZONE).tz)
-            if now.hour == 0 and now.minute == 0 and now.second < 10:
-                update_prices()
-            
-            time.sleep(10)  # Check every 10 seconds
+            time.sleep(10)
     except KeyboardInterrupt:
-        pass
+        logging.info("Shutting down...")
     finally:
         client.loop_stop()
 
