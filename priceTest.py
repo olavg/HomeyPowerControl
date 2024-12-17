@@ -101,7 +101,8 @@ def collect_entsoe_prices():
     bidding_zone = '10YNO-2--------T'
     global prices
     try:
-        start = pd.Timestamp(datetime.now(pytz.utc).replace(hour=0, minute=0, second=0), tz="UTC")
+#        start = pd.Timestamp(datetime.now(pytz.utc).replace(hour=0, minute=0, second=0), tz="UTC")
+        start = pd.Timestamp(datetime.now(pytz.utc).replace(hour=0, minute=0, second=0))
         end = start + timedelta(days=1)
         prices_series = client_entsoe.query_day_ahead_prices(bidding_zone, start=start, end=end)
         prices.clear()
