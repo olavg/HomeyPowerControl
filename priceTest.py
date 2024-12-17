@@ -119,7 +119,7 @@ def collect_entsoe_prices():
     start_time = end_time - timedelta(days=1)
 
     # Replace with your actual bidding zone code for NO_2
-    bidding_zone = 'NO2'  # Verify this code from ENTSO-E documentation
+    bidding_zone = '10YNO-2--------T'  # Verify this code from ENTSO-E documentation
 
     try:
         # Query day-ahead prices
