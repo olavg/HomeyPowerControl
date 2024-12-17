@@ -132,7 +132,9 @@ def schedule_price_updates():
 # Main Function
 def main():
     global LAST_ACTIVITY_TIME
-    client = mqtt.Client()
+    #client = mqtt.Client()
+    # Specify protocol version to enforce updated API
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
     client.on_message = on_message
