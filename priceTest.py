@@ -210,6 +210,30 @@ def get_current_power_usage(api_base_url="http://192.168.86.34", timeout=5):
 # Main Function
 def main():
     global LAST_ACTIVITY_TIME
+    collect_entsoe_prices()
+    threading.Thread(target=schedule_price_updates, daemon=True).start()
+
+    try:
+        while True:
+            # Fetch current power usage directly from the AMS Leser API
+            try:
+                current_power = get_current_power_usage()
+                calculate_cost(current_power)
+                LAST_ACTIVITY_TIME = time.time()
+            except Exception as e:
+                logging.warning(f"Failed to retrieve power usage: {e}")
+
+            # Check for inactivity and attempt reboot if necessary
+            if time.time() - LAST_ACTIVITY_TIME > 300:
+                reboot_ams_reader()
+                LAST_ACTIVITY_TIME = time.time()
+
+            time.sleep(10)
+    except KeyboardInterrupt:
+        logging.info("Shutting down...")
+
+def main_old():
+    global LAST_ACTIVITY_TIME
     #client = mqtt.Client()
     # Specify protocol version to enforce updated API
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
@@ -220,11 +244,6 @@ def main():
     client.loop_start()
     collect_entsoe_prices()
     threading.Thread(target=schedule_price_updates, daemon=True).start()
-    try:
-        current_power = get_current_power_usage()
-        logging.info(f"Power usage: {current_power} Watts")
-    except Exception as e:
-        logging.warning("Could not retrieve power usage data.")
     try:
         while True:
             if time.time() - LAST_ACTIVITY_TIME > 300:
