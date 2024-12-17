@@ -39,7 +39,7 @@ last_consumption = None
 local_timezone = pytz.timezone('Europe/Oslo')
 
 # MQTT Handlers
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, rc, properties=None):
     if rc == 0:
         logging.info("Connected to MQTT broker.")
         client.subscribe("ams/meter/import/active")
@@ -50,7 +50,7 @@ def on_disconnect(client, userdata, rc):
     logging.warning(f"Disconnected from MQTT broker with code {rc}. Reconnecting...")
     client.reconnect_delay_set(min_delay=5, max_delay=60)
 
-def on_message(client, userdata, msg):
+def on_message(client, userdata, msg, properties=None):
     global LAST_ACTIVITY_TIME, last_consumption, prices
     LAST_ACTIVITY_TIME = time.time()
     try:
