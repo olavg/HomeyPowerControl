@@ -123,6 +123,13 @@ def collect_entsoe_prices():
 
     try:
         # Query day-ahead prices
+        # Set start and end times with UTC timezone
+        utc = pytz.utc
+        end = datetime.now(utc)  # End time is now in UTC
+        start = end - timedelta(days=1)  # Start is 24 hours before
+        prices = client.query_day_ahead_prices(bidding_zone, start=start, end=end)
+        print(prices)
+
         prices_series = client_entsoe.query_day_ahead_prices(bidding_zone, start=start_time, end=end_time)
         # Convert to dictionary with hour as key (0-23) in local time
         global prices
