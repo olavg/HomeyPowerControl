@@ -39,14 +39,14 @@ last_consumption = None
 local_timezone = pytz.timezone('Europe/Oslo')
 
 # MQTT Event Handlers
-def on_connect(client, userdata, flags, reason_code, properties=None):
-    if reason_code == 0:
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
         logging.info("Connected to MQTT broker.")
         client.subscribe("ams/meter/import/active")
     else:
-        logging.error(f"Connection failed with code {reason_code}")
+        logging.error(f"Connection failed with code {rc}")
 
-def on_disconnect(client, userdata, rc, properties=None):
+def on_disconnect(client, userdata, rc):
     logging.warning(f"Disconnected from MQTT broker with code {rc}. Reconnecting...")
     while rc != 0:
         try:
@@ -125,7 +125,7 @@ def schedule_price_updates():
 
 def main():
     global LAST_ACTIVITY_TIME
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION5)
+    client = mqtt.Client()
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
     client.on_message = on_message
