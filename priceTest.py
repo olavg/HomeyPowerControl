@@ -143,7 +143,7 @@ def get_current_power_usage(api_base_url="http://192.168.86.34", timeout=5):
     Raises:
         Exception: If the API call fails or returns invalid data.
     """
-    endpoint = f"{api_base_url}/api/lastdata"
+    endpoint = f"{api_base_url}/data.json"
     try:
         response = requests.get(endpoint, timeout=timeout)
         response.raise_for_status()
