@@ -150,7 +150,7 @@ def get_current_power_usage(api_base_url="http://192.168.86.34", timeout=5):
         data = response.json()
 
         # Extracting the "power" value (ensure the API structure matches the docs)
-        current_power = float(data.get("power", 0.0))
+        current_power = float(data.get("w", 0.0))
         logging.info(f"Current power usage fetched: {current_power} Watts")
         return current_power
     except requests.RequestException as e:
