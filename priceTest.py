@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import threading
 import pytz
 import logging
+import pandas as pd
 
 # Configure logging
 logging.basicConfig(
@@ -101,12 +102,12 @@ def collect_entsoe_prices():
     bidding_zone = '10YNO-2--------T'
     global prices
     try:
-        start = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0)
+        start = pd.Timestamp(datetime.now(pytz.utc).replace(hour=0, minute=0, second=0))
         end = start + timedelta(days=1)
         prices_series = client_entsoe.query_day_ahead_prices(bidding_zone, start=start, end=end)
 
         prices.clear()
-        for ts, price in prices_series.iteritems():
+        for ts, price in prices_series.items():
             hour = ts.tz_convert(local_timezone).hour
             prices[str(hour)] = float(price)
         logging.info("Fetched ENTSO-E day-ahead prices successfully.")
@@ -124,7 +125,7 @@ def schedule_price_updates():
 
 def main():
     global LAST_ACTIVITY_TIME
-    client = mqtt.Client()
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
     client.on_message = on_message
