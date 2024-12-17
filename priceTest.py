@@ -9,6 +9,7 @@ import threading
 import pytz
 import logging
 import pandas as pd
+import random
 
 # Configure logging
 logging.basicConfig(
@@ -95,8 +96,54 @@ def reboot_ams_reader():
             time.sleep(5)
     logging.error("All reboot attempts failed.")
 
+def collect_entsoe_prices(max_retries=5):
+    """
+    Fetches ENTSO-E day-ahead prices with exponential backoff on failure.
+
+    Args:
+        max_retries (int): Maximum number of retry attempts.
+
+    Global:
+        Updates the `prices` dictionary with fetched price data.
+    """
+    client_entsoe = EntsoePandasClient(api_key=ENTSOE_API_KEY)
+    bidding_zone = '10YNO-2--------T'
+    global prices
+
+    retries = 0
+    backoff = 2  # Initial backoff time in seconds
+
+    while retries < max_retries:
+        try:
+            start = pd.Timestamp(datetime.now(pytz.utc).replace(hour=0, minute=0, second=0))
+            end = start + timedelta(days=1)
+            prices_series = client_entsoe.query_day_ahead_prices(bidding_zone, start=start, end=end)
+
+            # Clear and populate the prices dictionary
+            prices.clear()
+            for ts, price in prices_series.items():
+                try:
+                    hour = ts.tz_convert(local_timezone).hour
+                    prices[str(hour)] = float(price)
+                except Exception as e:
+                    logging.error(f"Invalid price data: {e}")
+
+            logging.info("Fetched ENTSO-E day-ahead prices successfully.")
+            return  # Exit the function on success
+
+        except requests.RequestException as e:
+            logging.error(f"Connection error: {e}. Retrying in {backoff} seconds...")
+        except Exception as e:
+            logging.error(f"Error fetching ENTSO-E prices: {e}. Retrying in {backoff} seconds...")
+
+        retries += 1
+        time.sleep(backoff + random.uniform(0, 1))  # Add jitter to prevent synchronized retries
+        backoff *= 2  # Exponential backoff
+
+    logging.error("All attempts to fetch ENTSO-E prices have failed.")
+
 # Fetch Prices from ENTSO-E
-def collect_entsoe_prices():
+def collect_entsoe_prices_old():
     client_entsoe = EntsoePandasClient(api_key=ENTSOE_API_KEY)
     bidding_zone = '10YNO-2--------T'
     global prices
