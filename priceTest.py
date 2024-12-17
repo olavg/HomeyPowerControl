@@ -129,6 +129,37 @@ def schedule_price_updates():
         except Exception as e:
             logging.error(f"Error in price update thread: {e}")
 
+def get_current_power_usage(api_base_url="http://192.168.86.34", timeout=5):
+    """
+    Fetch the current power usage from the AMS Leser HTTP API.
+
+    Args:
+        api_base_url (str): The base URL of the AMS Leser API.
+        timeout (int): Request timeout in seconds.
+
+    Returns:
+        float: Current power usage in Watts.
+
+    Raises:
+        Exception: If the API call fails or returns invalid data.
+    """
+    endpoint = f"{api_base_url}/api/lastdata"
+    try:
+        response = requests.get(endpoint, timeout=timeout)
+        response.raise_for_status()
+        data = response.json()
+
+        # Extracting the "power" value (ensure the API structure matches the docs)
+        current_power = float(data.get("power", 0.0))
+        logging.info(f"Current power usage fetched: {current_power} Watts")
+        return current_power
+    except requests.RequestException as e:
+        logging.error(f"Failed to fetch power usage: {e}")
+        raise
+    except (ValueError, KeyError) as e:
+        logging.error(f"Invalid data received from AMS Leser API: {e}")
+        raise
+
 # Main Function
 def main():
     global LAST_ACTIVITY_TIME
@@ -142,7 +173,11 @@ def main():
     client.loop_start()
     collect_entsoe_prices()
     threading.Thread(target=schedule_price_updates, daemon=True).start()
-
+    try:
+        current_power = get_current_power_usage()
+        logging.info(f"Power usage: {current_power} Watts")
+    except Exception as e:
+        logging.warning("Could not retrieve power usage data.")
     try:
         while True:
             if time.time() - LAST_ACTIVITY_TIME > 300:
