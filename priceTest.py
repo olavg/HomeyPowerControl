@@ -120,7 +120,7 @@ def collect_entsoe_prices():
 
     # Replace with your actual bidding zone code for NO_2
     bidding_zone = '10YNO-2--------T'  # Verify this code from ENTSO-E documentation
-
+    global prices
     try:
         # Query day-ahead prices
         # Set start and end times with UTC timezone
@@ -132,7 +132,7 @@ def collect_entsoe_prices():
 
         prices_series = client_entsoe.query_day_ahead_prices(bidding_zone, start=start_time, end=end_time)
         # Convert to dictionary with hour as key (0-23) in local time
-        global prices
+
         prices = {}
         for ts, price in prices_series.iteritems():
             # Convert UTC timestamp to local timezone
