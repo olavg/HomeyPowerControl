@@ -199,17 +199,15 @@ def set_charging_amperage(amperage):
             print(f"First Installation ID: {installation_id}, Name: {installation_name}")
         else:
             print("No installations found or unexpected response format.")
-
-        url = f"https://api.zaptec.com/api/installations/{installation_id}/update"
-
+        url = ZAPTEC_API_URL.format(installation_id=installation_id)
 
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
         payload = {
-            "AvailableCurrent": amperage
-        }
+                "AvailableCurrent": amperage
+            }
         response = requests.post(url, json=payload, headers=headers)
         response.raise_for_status()
         return response
