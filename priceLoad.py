@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 import pytz
 import pandas as pd
 from entsoe import EntsoePandasClient
+import json
 
 # Load environment variables
 load_dotenv()
