@@ -339,7 +339,7 @@ def schedule_water_heater_old(prices, current_time, water_heater_state):
         return 'off'
 from datetime import datetime, timedelta
 
-def schedule_water_heater(prices, current_time, water_heater_state, high_price_threshold = 100):
+def schedule_water_heater(prices, current_time, water_heater_state, high_price_threshold = high_price_threshold):
     """
     Schedule the water heater operation based on electricity prices and time constraints.
 
