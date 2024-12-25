@@ -335,7 +335,13 @@ def schedule_water_heater(prices, current_time, water_heater_state):
             return 'off'
     else:
         return 'off'
-
+def mqtt_publish(broker, port, topic, message, username=None, password=None):
+    client = mqtt.Client()
+    if username and password:
+        client.username_pw_set(username, password)
+    client.connect(broker, port)
+    client.publish(topic, message)
+    client.disconnect()
 # Control Water Heater via MQTT
 def control_water_heater(state):
     try:
