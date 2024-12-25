@@ -1,5 +1,19 @@
 import os
 import requests
+import os
+from dotenv import load_dotenv
+import requests
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Access environment variables
+username = os.getenv('ZAPTEC_USER')
+password = os.getenv('ZAPTEC_PASSWORD')
+
+# Use the credentials in your application logic
+response = requests.get('https://example.com/api', auth=(username, password))
+# Process the response as needed
 
 ZAPTEC_AUTH_URL = "https://api.zaptec.com/oauth/token"
 
