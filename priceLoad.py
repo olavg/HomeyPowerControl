@@ -337,7 +337,7 @@ def schedule_water_heater_old(prices, current_time, water_heater_state):
             return 'off'
     else:
         return 'off'
-from datetime import datetime, timedelta
+
 def schedule_water_heater(prices, current_time, water_heater_state, high_price_threshold=100):
     # Initialize variables
     total_on_hours = 0
@@ -558,6 +558,7 @@ def main():
 
                 # Schedule water heater
                 desired_water_heater_state = schedule_water_heater(prices, current_time, 'off')
+                print(desired_water_heater_state)
                 control_water_heater(desired_water_heater_state)
 
             # Refresh prices at 2 PM
