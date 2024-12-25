@@ -200,7 +200,8 @@ def set_charging_amperage(amperage):
         else:
             print("No installations found or unexpected response format.")
 
-        url = ZAPTEC_API_URL.format(installation_id)
+        url = f"https://api.zaptec.com/api/installations/{installation_id}/settings"
+
 
         headers = {
             "Authorization": f"Bearer {access_token}",
