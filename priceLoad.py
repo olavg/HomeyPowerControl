@@ -493,7 +493,7 @@ def mqtt_publish(topic, message, username=None, password=None):
     if username and password:
         client.username_pw_set(username, password)
     print(f"{MQTT_BROKER}, {MQTT_PORT}")
-    client.connect(MQTT_BROKER, MQTT_PORT)
+    #client.connect(MQTT_BROKER, MQTT_PORT)
     message = 1
     client.publish(topic, message)
     client.disconnect()
