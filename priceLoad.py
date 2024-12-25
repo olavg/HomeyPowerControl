@@ -409,7 +409,7 @@ def schedule_water_heater(prices, current_time, water_heater_state, high_price_t
     # Determine the desired state for the current hour
     current_hour = current_time.hour
     desired_state = schedule.get(current_hour, water_heater_state)
-
+    print(desired_state)
     return desired_state
 
 def schedule_water_heater_old(prices, current_time, water_heater_state, high_price_threshold = 100):
