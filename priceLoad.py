@@ -304,16 +304,8 @@ def charger_settings():
     response.raise_for_status()  # Raise an error for bad status codes
 
     # Parse the JSON response to extract charger data
-    chargers = response.json()
-    print(chargers)
-    # Output the charger information
-    for charger in chargers:
-        print(f"Charger ID: {charger['Id']}")
-        print(f"Name: {charger['Name']}")
-        print(f"Status: {charger['Status']}")
-        print(f"Location: {charger['Location']}")
-        print(f"Settings: {charger['Settings']}")
-        print("-" * 40)
+    chargers_data = response.json()
+    print(json.dumps(chargers_data, indent=4))
 
 # Main Function
 def main():
