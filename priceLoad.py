@@ -305,7 +305,7 @@ def charger_settings():
 
     # Parse the JSON response to extract charger data
     chargers = response.json()
-
+    print(chargers)
     # Output the charger information
     for charger in chargers:
         print(f"Charger ID: {charger['Id']}")
