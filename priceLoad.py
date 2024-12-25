@@ -14,6 +14,9 @@ from entsoe import EntsoePandasClient
 load_dotenv()
 
 # Configuration
+username = os.getenv('ZAPTEC_USER')
+password = os.getenv('ZAPTEC_PASSWORD')
+ZAPTEC_AUTH_URL = "https://api.zaptec.com/oauth/token"
 ZAPTEC_API_URL = "https://api.zaptec.com/api/chargers/{charger_id}/update"
 ZAPTEC_API_KEY = os.getenv("ZAPTEC_API_KEY")
 CHARGER_ID = os.getenv("ZAPTEC_CHARGER_ID")
@@ -28,6 +31,40 @@ MAX_AMPERAGE = 16  # Maximum charging current in amperes
 BATTERY_TARGET_KWH = 29  # 50% of a 58 kWh battery
 CAR_CHARGER_POWER = 3680  # 16A at 230V ~= 3.7 kW
 LOCAL_TZ = pytz.timezone("Europe/Oslo")
+
+def get_access_token():
+    # Retrieve credentials from environment variables
+    username = os.getenv("ZAPTEC_USER")
+    password = os.getenv("ZAPTEC_PASSWORD")
+
+    if not username or not password:
+        raise ValueError("Environment variables ZAPTEC_USER and ZAPTEC_PASSWORD must be set")
+
+    payload = {
+        "grant_type": "password",
+        "username": username,
+        "password": password,
+        "scope": "offline_access"
+    }
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    response = requests.post(ZAPTEC_AUTH_URL, data=payload, headers=headers)
+    response.raise_for_status()
+    return response.json()
+
+def refresh_access_token(refresh_token):
+    payload = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token
+    }
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    response = requests.post(ZAPTEC_AUTH_URL, data=payload, headers=headers)
+    response.raise_for_status()
+    return response.json()
+
 
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
@@ -136,9 +173,21 @@ def set_charging_amperage(amperage):
         return
 
     def api_call():
+        try:            # Fetch the initial access token
+            tokens = get_access_token()
+            access_token = tokens["access_token"]
+            refresh_token = tokens["refresh_token"]
+
+            print("Access Token:", access_token)
+            print("Refresh Token:", refresh_token)
+
+            # Example: Refresh the access token
+            new_tokens = refresh_access_token(refresh_token)
+        except:
+            pass
         url = ZAPTEC_API_URL.format(charger_id=CHARGER_ID)
         headers = {
-            "Authorization": f"Bearer {ZAPTEC_API_KEY}",
+            "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
         payload = {
