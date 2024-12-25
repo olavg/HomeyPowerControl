@@ -18,7 +18,8 @@ load_dotenv()
 username = os.getenv('ZAPTEC_USER')
 password = os.getenv('ZAPTEC_PASSWORD')
 ZAPTEC_AUTH_URL = "https://api.zaptec.com/oauth/token"
-ZAPTEC_API_URL = "https://api.zaptec.com/api/chargers/{charger_id}/update"
+#ZAPTEC_API_URL = "https://api.zaptec.com/api/chargers/{charger_id}/update"
+ZAPTEC_API_URL = "https://api.zaptec.com/api/installations/{installation_id}/settings"
 ZAPTEC_API_KEY = os.getenv("ZAPTEC_API_KEY")
 CHARGER_ID = os.getenv("ZAPTEC_CHARGER_ID")
 ENTSOE_API_KEY = os.getenv("ENTSOE_API_KEY")
@@ -200,6 +201,7 @@ def set_charging_amperage(amperage):
             print("No installations found or unexpected response format.")
 
         url = ZAPTEC_API_URL.format(installation_id)
+
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
