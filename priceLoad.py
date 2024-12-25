@@ -469,7 +469,7 @@ def main():
         while True:
             current_time = datetime.now(LOCAL_TZ)
             current_power = get_current_power_usage()
-
+            print(prices)
             if current_power is not None:
                 # Calculate desired charging amperage
                 desired_amperage = calculate_desired_amperage(current_power, water_heater_power)
