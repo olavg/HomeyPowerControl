@@ -23,7 +23,7 @@ ZAPTEC_API_KEY = os.getenv("ZAPTEC_API_KEY")
 CHARGER_ID = os.getenv("ZAPTEC_CHARGER_ID")
 ENTSOE_API_KEY = os.getenv("ENTSOE_API_KEY")
 MQTT_BROKER = os.getenv("MQTT_BROKER", "192.168.86.54")
-MQTT_PORT = os.getenv("MQTT_BROKER", "1883")
+MQTT_PORT = "1883"
 WATER_HEATER_TOPIC = "homey/water_heater"
 AMS_METER_API_BASE_URL = "http://192.168.86.34"
 MAX_TOTAL_LOAD = 10000  # Maximum household load in watts
@@ -494,6 +494,7 @@ def mqtt_publish(topic, message, username=None, password=None):
         client.username_pw_set(username, password)
     print(f"{MQTT_BROKER}, {MQTT_PORT}")
     client.connect(MQTT_BROKER, MQTT_PORT)
+    message = 1
     client.publish(topic, message)
     client.disconnect()
 # Control Water Heater via MQTT
