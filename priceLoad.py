@@ -499,7 +499,7 @@ def mqtt_publish(topic, message, username=None, password=None):
 def control_water_heater(state):
     print(state)
     try:
-        mqtt_publish(WATER_HEATER_TOPIC, message=state)
+        mqtt_publish(WATER_HEATER_TOPIC, state)
         logging.info(f"Water heater turned {state}.")
     except Exception as e:
         logging.error(f"Failed to control water heater: {e}")
