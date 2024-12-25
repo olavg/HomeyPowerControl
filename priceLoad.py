@@ -28,7 +28,7 @@ AMS_METER_API_BASE_URL = "http://192.168.86.34"
 MAX_TOTAL_LOAD = 10000  # Maximum household load in watts
 NOMINAL_VOLTAGE = 230  # Voltage in volts
 MIN_AMPERAGE = 6  # Minimum charging current in amperes
-MAX_AMPERAGE = 16  # Maximum charging current in amperes
+MAX_AMPERAGE = 32  # Maximum charging current in amperes
 BATTERY_TARGET_KWH = 29  # 50% of a 58 kWh battery
 CAR_CHARGER_POWER = 3680  # 16A at 230V ~= 3.7 kW
 LOCAL_TZ = pytz.timezone("Europe/Oslo")
