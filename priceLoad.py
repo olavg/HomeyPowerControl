@@ -345,7 +345,7 @@ def mqtt_publish(topic, message, username=None, password=None):
 # Control Water Heater via MQTT
 def control_water_heater(state):
     try:
-        mqtt_publish.single(WATER_HEATER_TOPIC, payload=state, hostname=MQTT_BROKER)
+        mqtt_publish(WATER_HEATER_TOPIC, payload=state, hostname=MQTT_BROKER)
         logging.info(f"Water heater turned {state}.")
     except Exception as e:
         logging.error(f"Failed to control water heater: {e}")
