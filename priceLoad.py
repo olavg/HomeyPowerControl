@@ -498,6 +498,7 @@ def mqtt_publish(topic, message, username=None, password=None):
 # Control Water Heater via MQTT
 def control_water_heater(state):
     print(state)
+    mqtt_publish(WATER_HEATER_TOPIC, state)
     try:
         mqtt_publish(WATER_HEATER_TOPIC, state)
         logging.info(f"Water heater turned {state}.")
