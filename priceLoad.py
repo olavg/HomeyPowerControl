@@ -288,6 +288,31 @@ def control_water_heater(state):
         logging.info(f"Water heater turned {state}.")
     except Exception as e:
         logging.error(f"Failed to control water heater: {e}")
+def charger_settings():
+    # Define the API URL for retrieving chargers
+    api_url = 'https://api.zaptec.com/api/chargers'
+
+    # Set the headers, including the Authorization header with the bearer token
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json'
+    }
+
+    # Make the GET request to retrieve charger information
+    response = requests.get(api_url, headers=headers)
+    response.raise_for_status()  # Raise an error for bad status codes
+
+    # Parse the JSON response to extract charger data
+    chargers = response.json()
+
+    # Output the charger information
+    for charger in chargers:
+        print(f"Charger ID: {charger['Id']}")
+        print(f"Name: {charger['Name']}")
+        print(f"Status: {charger['Status']}")
+        print(f"Location: {charger['Location']}")
+        print(f"Settings: {charger['Settings']}")
+        print("-" * 40)
 
 # Main Function
 def main():
@@ -332,6 +357,7 @@ def main():
                 fetch_entsoe_prices()
                 plan_charging_schedule()
 
+            charger_settings()
             time.sleep(60)  # Check every minute
 
     except KeyboardInterrupt:
