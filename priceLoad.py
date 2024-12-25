@@ -291,7 +291,8 @@ def control_water_heater(state):
 def charger_settings():
     # Define the API URL for retrieving chargers
     api_url = 'https://api.zaptec.com/api/chargers'
-
+    tokens = get_access_token()
+    access_token = tokens["access_token"]
     # Set the headers, including the Authorization header with the bearer token
     headers = {
         'Authorization': f'Bearer {access_token}',
