@@ -189,6 +189,7 @@ def set_charging_amperage(amperage):
         access_token = tokens["access_token"]
         print(access_token)
         installations = get_installations(access_token)
+        print(installations)
         for installation in installations:
           installation_id = installation.get('Id')
 
