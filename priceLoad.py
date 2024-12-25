@@ -188,10 +188,16 @@ def set_charging_amperage(amperage):
         tokens = get_access_token()
         access_token = tokens["access_token"]
         print(access_token)
-        installations = get_installations(access_token)
-        print(installations)
-        for installation in installations:
-          installation_id = installation.get('Id')
+        installations_response = get_installations(access_token)
+        print(installations_response)
+        # Check if 'Data' key exists and contains installations
+        if 'Data' in installations_response and installations_response['Data']:
+            first_installation = installations_response['Data'][0]
+            installation_id = first_installation.get('Id')
+            installation_name = first_installation.get('Name')
+            print(f"First Installation ID: {installation_id}, Name: {installation_name}")
+        else:
+            print("No installations found or unexpected response format.")
 
         url = ZAPTEC_API_URL.format(installation_id)
         headers = {
