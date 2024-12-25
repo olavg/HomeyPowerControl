@@ -165,6 +165,39 @@ def get_current_power_usage(api_base_url=AMS_METER_API_BASE_URL, timeout=5):
 
 # Set Zaptec Charging Amperage
 def set_charging_amperage(amperage):
+    """
+    Set the available charging current for the entire installation.
+    """
+    global last_zaptec_update
+    now = datetime.now()
+
+    # Check rate limiting: ensure at least 15 minutes between updates
+    if last_zaptec_update and (now - last_zaptec_update) < timedelta(minutes=15):
+        logging.info("Skipping Zaptec update to comply with rate limiting.")
+        return
+
+    def api_call():
+        access_token = get_access_token()
+        url = ZAPTEC_API_URL.format(installation_id=INSTALLATION_ID)
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "AvailableCurrent": amperage
+        }
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response
+
+    # Attempt the API call with exponential backoff
+    exponential_backoff_retry(api_call)
+
+    # Update the timestamp of the last successful update
+    last_zaptec_update = now
+    logging.info(f"Installation available current set to {amperage}A successfully.")
+
+def set_charging_amperage_old(amperage):
     global last_zaptec_update
     now = datetime.now()
 
