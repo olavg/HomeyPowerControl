@@ -33,6 +33,7 @@ MAX_AMPERAGE = 32  # Maximum charging current in amperes
 BATTERY_TARGET_KWH = 29  # 50% of a 58 kWh battery
 CAR_CHARGER_POWER = 3680  # 16A at 230V ~= 3.7 kW
 LOCAL_TZ = pytz.timezone("Europe/Oslo")
+high_price_threshold = 100
 
 def get_access_token():
     # Retrieve credentials from environment variables
