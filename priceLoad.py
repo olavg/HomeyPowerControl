@@ -295,7 +295,7 @@ def calculate_desired_amperage(current_power_usage, water_heater_power, max_tota
         return int(desired_amperage)
 
 # Schedule Water Heater
-def schedule_water_heater(prices, current_time, water_heater_state):
+def schedule_water_heater_old(prices, current_time, water_heater_state):
     """
     Schedule the water heater operation based on electricity prices and time of day.
 
@@ -336,6 +336,84 @@ def schedule_water_heater(prices, current_time, water_heater_state):
             return 'off'
     else:
         return 'off'
+from datetime import datetime, timedelta
+
+def schedule_water_heater(prices, current_time, water_heater_state, high_price_threshold):
+    """
+    Schedule the water heater operation based on electricity prices and time constraints.
+
+    Args:
+        prices (dict): Dictionary with hour (0-23) as key and price as value.
+        current_time (datetime): Current datetime object.
+        water_heater_state (str): Current state of the water heater; 'on' or 'off'.
+        high_price_threshold (float): Price threshold above which the water heater should be turned off during the day.
+
+    Returns:
+        str: Desired state of the water heater; 'on' or 'off'.
+    """
+    # Initialize variables
+    total_on_hours = 0
+    evening_off_hours = 0
+    consecutive_off_hours = 0
+    schedule = {}
+
+    # Define time periods
+    evening_start = 16
+    evening_end = 23
+    night_start = 23
+    night_end = 7
+    day_start = 7
+    day_end = 16
+
+    # Evening scheduling (16:00 - 23:00)
+    for hour in range(evening_start, evening_end + 1):
+        if prices[hour] > high_price_threshold and evening_off_hours < 3 and consecutive_off_hours < 1:
+            schedule[hour] = 'off'
+            evening_off_hours += 1
+            consecutive_off_hours += 1
+        else:
+            schedule[hour] = 'on'
+            total_on_hours += 1
+            consecutive_off_hours = 0
+
+    # Night scheduling (23:00 - 07:00)
+    for hour in range(night_start, 24):
+        schedule[hour] = 'on'
+        total_on_hours += 1
+    for hour in range(0, night_end):
+        schedule[hour] = 'on'
+        total_on_hours += 1
+
+    # Ensure 2 hours on before 07:00
+    if schedule[5] == 'off' and schedule[6] == 'off':
+        schedule[5] = 'on'
+        schedule[6] = 'on'
+        total_on_hours += 2
+
+    # Daytime scheduling (07:00 - 16:00)
+    for hour in range(day_start, day_end):
+        if prices[hour] > high_price_threshold:
+            schedule[hour] = 'off'
+        else:
+            schedule[hour] = 'on'
+            total_on_hours += 1
+
+    # Ensure minimum 12 hours of operation
+    if total_on_hours < 12:
+        additional_hours_needed = 12 - total_on_hours
+        # Turn on during the cheapest off hours
+        off_hours = [hour for hour, state in schedule.items() if state == 'off']
+        off_hours.sort(key=lambda x: prices[x])
+        for hour in off_hours[:additional_hours_needed]:
+            schedule[hour] = 'on'
+            total_on_hours += 1
+
+    # Determine the desired state for the current hour
+    current_hour = current_time.hour
+    desired_state = schedule.get(current_hour, water_heater_state)
+
+    return desired_state
+
 def mqtt_publish(topic, message, username=None, password=None):
     client = mqtt.Client()
     if username and password:
