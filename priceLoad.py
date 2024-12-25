@@ -185,7 +185,8 @@ def set_charging_amperage(amperage):
         return
 
     def api_call():
-        access_token = get_access_token()
+        tokens = get_access_token()
+        access_token = tokens["access_token"]
         print(access_token)
         installations = get_installations(access_token)
         for installation in installations:
