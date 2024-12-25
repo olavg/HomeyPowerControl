@@ -162,6 +162,14 @@ def get_current_power_usage(api_base_url=AMS_METER_API_BASE_URL, timeout=5):
     except Exception as e:
         logging.error(f"Error fetching power usage: {e}")
         return None
+def get_installations(access_token):
+    url = "https://api.zaptec.com/api/installation"
+    headers = {
+        "Authorization": f"Bearer {access_token}"
+    }
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    return response.json()
 
 # Set Zaptec Charging Amperage
 def set_charging_amperage(amperage):
@@ -178,7 +186,11 @@ def set_charging_amperage(amperage):
 
     def api_call():
         access_token = get_access_token()
-        url = ZAPTEC_API_URL.format(installation_id=INSTALLATION_ID)
+        installations = get_installations(access_token)
+        for installation in installations:
+          installation_id = installation.get('Id')
+
+        url = ZAPTEC_API_URL.format(installation_id)
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
