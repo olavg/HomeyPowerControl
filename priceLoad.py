@@ -338,8 +338,81 @@ def schedule_water_heater_old(prices, current_time, water_heater_state):
     else:
         return 'off'
 from datetime import datetime, timedelta
+def schedule_water_heater(prices, current_time, water_heater_state, high_price_threshold=100):
+    # Initialize variables
+    total_on_hours = 0
+    evening_off_hours = 0
+    consecutive_off_hours = 0
+    schedule = {}
 
-def schedule_water_heater(prices, current_time, water_heater_state, high_price_threshold = 100):
+    # Define time periods
+    evening_start = 16
+    evening_end = 23
+    night_start = 23
+    night_end = 7
+    day_start = 7
+    day_end = 16
+
+    # Helper function to extract hour from 'day-hour' key
+    def extract_hour(key):
+        try:
+            return int(key.split('-')[1])
+        except (IndexError, ValueError):
+            return None
+
+    # Evening scheduling (16:00 - 23:00)
+    for key in prices:
+        hour = extract_hour(key)
+        if hour is not None and evening_start <= hour <= evening_end:
+            if prices[key] > high_price_threshold and evening_off_hours < 3 and consecutive_off_hours < 1:
+                schedule[hour] = 'off'
+                evening_off_hours += 1
+                consecutive_off_hours += 1
+            else:
+                schedule[hour] = 'on'
+                total_on_hours += 1
+                consecutive_off_hours = 0
+
+    # Night scheduling (23:00 - 07:00)
+    for key in prices:
+        hour = extract_hour(key)
+        if hour is not None and (hour >= night_start or hour < night_end):
+            schedule[hour] = 'on'
+            total_on_hours += 1
+
+    # Ensure 2 hours on before 07:00
+    if schedule.get(5) == 'off' and schedule.get(6) == 'off':
+        schedule[5] = 'on'
+        schedule[6] = 'on'
+        total_on_hours += 2
+
+    # Daytime scheduling (07:00 - 16:00)
+    for key in prices:
+        hour = extract_hour(key)
+        if hour is not None and day_start <= hour < day_end:
+            if prices[key] > high_price_threshold:
+                schedule[hour] = 'off'
+            else:
+                schedule[hour] = 'on'
+                total_on_hours += 1
+
+    # Ensure minimum 12 hours of operation
+    if total_on_hours < 12:
+        additional_hours_needed = 12 - total_on_hours
+        # Turn on during the cheapest off hours
+        off_hours = [hour for hour, state in schedule.items() if state == 'off']
+        off_hours.sort(key=lambda x: prices[f"{current_time.day}-{x}"])
+        for hour in off_hours[:additional_hours_needed]:
+            schedule[hour] = 'on'
+            total_on_hours += 1
+
+    # Determine the desired state for the current hour
+    current_hour = current_time.hour
+    desired_state = schedule.get(current_hour, water_heater_state)
+
+    return desired_state
+
+def schedule_water_heater_old(prices, current_time, water_heater_state, high_price_threshold = 100):
     """
     Schedule the water heater operation based on electricity prices and time constraints.
 
