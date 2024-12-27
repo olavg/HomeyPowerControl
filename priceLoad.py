@@ -1193,6 +1193,7 @@ def main():
                 # Assess device impact and control devices
                 device_states = assess_device_impact(
                     current_power=current_power,
+                    topics=FLOOR_TOPICS + [WATER_HEATER_TOPIC],
                     threshold_load=MAX_TOTAL_LOAD
                 )
                 for topic, state in device_states.items():
