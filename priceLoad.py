@@ -10,6 +10,7 @@ import pytz
 import pandas as pd
 from entsoe import EntsoePandasClient
 import json
+import logging
 
 # Load environment variables
 load_dotenv()
@@ -35,7 +36,86 @@ CAR_CHARGER_POWER = 3680  # 16A at 230V ~= 3.7 kW
 LOCAL_TZ = pytz.timezone("Europe/Oslo")
 high_price_threshold = 100
 
+
+def make_api_request(
+    url,
+    method="GET",
+    headers=None,
+    payload=None,
+    params=None,
+    max_retries=3,
+    initial_delay=5,
+    timeout=10
+):
+    """
+    Make an API request with retry logic.
+
+    Args:
+        url (str): The API endpoint URL.
+        method (str): HTTP method ("GET", "POST", "PUT", "DELETE"). Default is "GET".
+        headers (dict): Request headers. Default is None.
+        payload (dict): Request payload for "POST" or "PUT". Default is None.
+        params (dict): Query parameters for "GET" requests. Default is None.
+        max_retries (int): Maximum number of retries for the request. Default is 3.
+        initial_delay (int): Initial delay between retries in seconds. Default is 5.
+        timeout (int): Request timeout in seconds. Default is 10.
+
+    Returns:
+        dict: Parsed JSON response from the API.
+
+    Raises:
+        Exception: If all retries fail or the response status is not successful.
+    """
+    delay = initial_delay
+
+    for attempt in range(max_retries):
+        try:
+            if method.upper() == "GET":
+                response = requests.get(url, headers=headers, params=params, timeout=timeout)
+            elif method.upper() == "POST":
+                response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+            elif method.upper() == "PUT":
+                response = requests.put(url, headers=headers, json=payload, timeout=timeout)
+            elif method.upper() == "DELETE":
+                response = requests.delete(url, headers=headers, timeout=timeout)
+            else:
+                raise ValueError(f"Unsupported HTTP method: {method}")
+
+            response.raise_for_status()  # Raise an error for bad HTTP status codes
+            return response.json()  # Return the parsed JSON response
+
+        except requests.exceptions.HTTPError as http_err:
+            logging.error(f"HTTP error occurred: {http_err} (Attempt {attempt + 1})")
+        except requests.exceptions.RequestException as req_err:
+            logging.error(f"Request error occurred: {req_err} (Attempt {attempt + 1})")
+
+        # Wait before retrying
+        time.sleep(delay)
+        delay *= 2  # Exponential backoff
+
+    logging.error(f"All retries failed for API URL: {url}")
+    raise Exception(f"Failed to complete {method} request to {url} after {max_retries} attempts.")
+
 def get_access_token():
+    username = os.getenv("ZAPTEC_USER")
+    password = os.getenv("ZAPTEC_PASSWORD")
+
+    if not username or not password:
+        raise ValueError("Environment variables ZAPTEC_USER and ZAPTEC_PASSWORD must be set")
+
+    payload = {
+        "grant_type": "password",
+        "username": username,
+        "password": password,
+        "scope": "offline_access"
+    }
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+
+    return make_api_request(ZAPTEC_AUTH_URL, method="POST", headers=headers, payload=payload)
+
+def get_access_token_old():
     # Retrieve credentials from environment variables
     username = os.getenv("ZAPTEC_USER")
     password = os.getenv("ZAPTEC_PASSWORD")
