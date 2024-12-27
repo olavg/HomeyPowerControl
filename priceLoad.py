@@ -221,10 +221,13 @@ def set_charging_amperage_new(amperage):
         "maxChargeCurrent": amperage,
         "minChargeCurrent": amperage  # Setting min and max to the same for consistent control
     }
+    payload = {
+        "AvailableCurrent": amperage
+    }
     # Send the request using the generic function
     logging.info(f"Attempting to set installation available current to {amperage}A.")
     try:
-        response = make_api_request(url, method="POST", headers=headers, payload=payload, use_json=False)
+        response = make_api_request(url, method="POST", headers=headers, payload=payload, use_json=True)
         logging.info(f"Installation available current set to {amperage}A successfully.")
     except Exception as e:
         logging.error(f"Failed to set charging amperage: {e}")
