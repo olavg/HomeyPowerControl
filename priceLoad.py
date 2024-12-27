@@ -206,35 +206,41 @@ def set_charging_amperage(amperage):
     if 'Data' in installations_response and installations_response['Data']:
         first_installation = installations_response['Data'][0]
         installation_id = first_installation.get('Id')
-        installation_name = first_installation.get('Name')
-        logging.info(f"First Installation ID: {installation_id}, Name: {installation_name}")
+        logging.info(f"Using Installation ID: {installation_id}")
     else:
         raise Exception("No installations found or unexpected response format.")
-    amperage=11
+
     # API endpoint for updating available current
     url = ZAPTEC_API_URL.format(installation_id=installation_id)
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
-    payload = {
-        "maxChargeCurrent": amperage,
-        "minChargeCurrent": amperage  # Setting min and max to the same for consistent control
-    }
+
+    # Try with simplified payload
     payload = {
         "AvailableCurrent": amperage
     }
-    # Send the request using the generic function
-    logging.info(f"Attempting to set installation available current to {amperage}A.")
+
+    # Log payload before sending
+    logging.info(f"Payload being sent to {url}: {payload}")
+
+    # Make API request
     try:
-        response = make_api_request(url, method="POST", headers=headers, payload=payload, use_json=True)
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()
         logging.info(f"Installation available current set to {amperage}A successfully.")
-    except Exception as e:
-        logging.error(f"Failed to set charging amperage: {e}")
+    except requests.exceptions.HTTPError as http_err:
+        logging.error(f"HTTP error occurred: {http_err}")
+        logging.error(f"Response content: {http_err.response.text}")
+        raise
+    except requests.exceptions.RequestException as req_err:
+        logging.error(f"Request error occurred: {req_err}")
         raise
 
     # Update the timestamp of the last successful update
     last_zaptec_update = now
+
 
 # MQTT Handlers
 def on_connect(client, userdata, flags, rc):
