@@ -678,9 +678,39 @@ def charger_settings():
     # Parse the JSON response to extract charger data
     chargers_data = response.json()
     print(json.dumps(chargers_data, indent=4))
+### Car charghing
+def manage_car_charging(current_time, current_house_load, current_price, high_price_threshold, max_total_load=MAX_TOTAL_LOAD):
+    """
+    Manage car charging based on current load, price, and user happiness.
+
+    Args:
+        current_time (datetime): Current time.
+        current_house_load (float): Current house power draw in watts.
+        current_price (float): Current electricity price.
+        high_price_threshold (float): Price threshold to pause/reduce charging.
+        max_total_load (int): Maximum allowable load for the house in watts.
+
+    Returns:
+        int: Desired charging amperage.
+    """
+    available_power = max_total_load - current_house_load
+
+    # Adjust charging based on price
+    if current_price > high_price_threshold:
+        logging.info("Price is too high; reducing charging to minimum.")
+        return MIN_AMPERAGE
+
+    # Calculate desired amperage based on available power
+    desired_amperage = available_power // NOMINAL_VOLTAGE
+    desired_amperage = min(max(desired_amperage, MIN_AMPERAGE), MAX_AMPERAGE)
+
+    logging.info(f"Setting charging to {desired_amperage}A based on available power and price.")
+    return desired_amperage
 
 # Main Function
-def main():
+
+
+def main_old():
     global LAST_ACTIVITY_TIME, water_heater_power
     water_heater_power = 0.0  # Initialize water_heater_power
 
@@ -731,6 +761,68 @@ def main():
     finally:
         client.loop_stop()
         client.disconnect()
+
+# Main Function
+def main():
+    global LAST_ACTIVITY_TIME, water_heater_power
+    water_heater_power = 0.0  # Initialize water_heater_power
+
+    # MQTT Client Setup
+    client = mqtt.Client()
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.connect(MQTT_BROKER, 1883, 60)
+    client.loop_start()
+
+    # Fetch initial prices and plan schedule
+    fetch_entsoe_prices()
+    plan_charging_schedule()
+
+    try:
+        while True:
+            current_time = datetime.now(LOCAL_TZ)
+            current_power = get_current_power_usage()
+            logging.info(f"Current power usage: {current_power} Watts")
+
+            if current_power is not None:
+                # Fetch current price for the hour
+                hour_key = f"{current_time.day}-{current_time.hour}"
+                current_price = prices.get(hour_key, 0)
+                logging.info(f"Current electricity price: {current_price}")
+
+                # Manage car charging dynamically
+                desired_amperage = manage_car_charging(
+                    current_time=current_time,
+                    current_house_load=current_power,
+                    current_price=current_price,
+                    high_price_threshold=high_price_threshold,
+                    max_total_load=MAX_TOTAL_LOAD
+                )
+                set_charging_amperage(desired_amperage)
+                logging.info(f"Charging amperage set to: {desired_amperage}A")
+
+                # Schedule water heater
+                desired_water_heater_state = schedule_water_heater(prices, current_time, 'off', high_price_threshold)
+                control_water_heater(desired_water_heater_state)
+                logging.info(f"Water heater state set to: {desired_water_heater_state}")
+
+            # Refresh prices at 2 PM
+            if current_time.hour == 14 and (current_time - timedelta(minutes=1)).hour != 14:
+                fetch_entsoe_prices()
+                plan_charging_schedule()
+
+            # Log charger settings (optional)
+            charger_settings()
+
+            time.sleep(60)  # Check every minute
+
+    except KeyboardInterrupt:
+        logging.info("Script terminated by user.")
+    finally:
+        client.loop_stop()
+        client.disconnect()
+
+
 
 if __name__ == "__main__":
     main()
