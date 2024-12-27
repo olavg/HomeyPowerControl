@@ -973,9 +973,10 @@ def adjust_charging_for_water_heater(average_load, threshold_load, current_power
 
     logging.info(f"Calculated charging amperage: {int(desired_amperage)}A")
     return int(desired_amperage)
-def setup_mqtt_client_old(broker, port=1883, keepalive=60, username=None, password=None):
+def setup_mqtt_client(broker, port=1883, keepalive=60, username=None, password=None):
     """
-    Sets up and connects an MQTT client with improved error handling and optional authentication.
+    Sets up and connects an MQTT client with error handling and optional authentication,
+    using MQTT version 3.1.1 for compatibility.
 
     Args:
         broker (str): MQTT broker address.
@@ -995,7 +996,7 @@ def setup_mqtt_client_old(broker, port=1883, keepalive=60, username=None, passwo
 
     def on_disconnect(client, userdata, rc):
         if rc != 0:
-            logging.warning(f"Unexpected disconnection. Reconnecting to MQTT broker...")
+            logging.warning("Unexpected disconnection. Reconnecting to MQTT broker...")
             reconnect_mqtt_client(client)
 
     def on_message(client, userdata, msg):
@@ -1009,7 +1010,7 @@ def setup_mqtt_client_old(broker, port=1883, keepalive=60, username=None, passwo
             logging.error(f"Reconnection failed: {e}")
             time.sleep(5)  # Retry after a delay
 
-    client = mqtt.Client()
+    client = mqtt.Client(protocol=mqtt.MQTTv311)  # Use MQTT version 3.1.1
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
     client.on_message = on_message
@@ -1035,7 +1036,7 @@ def setup_mqtt_client_old(broker, port=1883, keepalive=60, username=None, passwo
 
     client.loop_start()
     return client
-import paho.mqtt.client as mqtt
+
 
 def setup_mqtt_client(broker, port=1883, keepalive=60, username=None, password=None):
     """
