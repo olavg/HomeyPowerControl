@@ -46,6 +46,10 @@ last_zaptec_update = None
 water_heater_power = 0.0  # Initialize water heater power consumption
 last_consumption = 0.0  # Initialize last consumption
 LAST_ACTIVITY_TIME = time.time()
+FLOOR_TOPICS = [f"homey/floor_heating/floor_{i}" for i in range(1, 6)]  # Topics for 5 floors
+FLOOR_WATTAGE = [500, 500, 500, 500, 500]  # Estimated wattage for each floor
+WATER_HEATER_TOPIC = "homey/water_heater"
+TOTAL_DEVICES = 6  # 5 floors + 1 water heater
 
 def make_api_request(
     url,
@@ -240,7 +244,53 @@ def set_charging_amperage(amperage):
 
     # Update the timestamp of the last successful update
     last_zaptec_update = now
+def publish_device_state(topic, state):
+    """
+    Publish the desired state of a device to MQTT.
 
+    Args:
+        topic (str): MQTT topic for the device.
+        state (str): Desired state ('on' or 'off').
+    """
+    try:
+        mqtt_publish(topic, message=state)
+        logging.info(f"Published state '{state}' to topic '{topic}'.")
+    except Exception as e:
+        logging.error(f"Failed to publish state to topic '{topic}': {e}")
+
+def assess_device_impact(current_power, threshold_load):
+    """
+    Turn off devices one by one to measure their impact on the total load.
+
+    Args:
+        current_power (float): Current house power usage in watts.
+        threshold_load (float): Threshold for the maximum allowable load in watts.
+
+    Returns:
+        dict: Device states indicating 'on' or 'off' for each floor and the water heater.
+    """
+    device_states = {topic: 'on' for topic in FLOOR_TOPICS + [WATER_HEATER_TOPIC]}
+
+    for i, topic in enumerate(FLOOR_TOPICS + [WATER_HEATER_TOPIC]):
+        # Turn off the device
+        publish_device_state(topic, 'off')
+        time.sleep(10)  # Wait 10 seconds to observe the impact on power usage
+
+        # Get updated power usage
+        new_power = get_current_power_usage()
+        logging.info(f"Impact of turning off {topic}: {current_power - new_power:.2f} Watts")
+
+        # Check if load is below threshold
+        if new_power < threshold_load:
+            logging.info(f"Threshold achieved by turning off {topic}.")
+            device_states[topic] = 'off'
+            break  # Stop turning off more devices
+        else:
+            # Turn the device back on
+            publish_device_state(topic, 'on')
+            device_states[topic] = 'on'
+
+    return device_states
 
 # MQTT Handlers
 def on_connect(client, userdata, flags, rc):
@@ -763,7 +813,7 @@ def main_old():
         client.disconnect()
 
 # Main Function
-def main():
+def main_new_but_old():
     global LAST_ACTIVITY_TIME, water_heater_power
     water_heater_power = 0.0  # Initialize water_heater_power
 
@@ -805,6 +855,68 @@ def main():
                 desired_water_heater_state = schedule_water_heater(prices, current_time, 'off', high_price_threshold)
                 control_water_heater(desired_water_heater_state)
                 logging.info(f"Water heater state set to: {desired_water_heater_state}")
+
+            # Refresh prices at 2 PM
+            if current_time.hour == 14 and (current_time - timedelta(minutes=1)).hour != 14:
+                fetch_entsoe_prices()
+                plan_charging_schedule()
+
+            # Log charger settings (optional)
+            charger_settings()
+
+            time.sleep(60)  # Check every minute
+
+    except KeyboardInterrupt:
+        logging.info("Script terminated by user.")
+    finally:
+        client.loop_stop()
+        client.disconnect()
+
+def main():
+    global LAST_ACTIVITY_TIME, water_heater_power
+    water_heater_power = 2000  # Initialize water heater power draw (2kW)
+
+    # MQTT Client Setup
+    client = mqtt.Client()
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.connect(MQTT_BROKER, 1883, 60)
+    client.loop_start()
+
+    # Fetch initial prices and plan schedule
+    fetch_entsoe_prices()
+    plan_charging_schedule()
+
+    try:
+        while True:
+            current_time = datetime.now(LOCAL_TZ)
+            current_power = get_current_power_usage()
+            logging.info(f"Current power usage: {current_power} Watts")
+
+            if current_power is not None:
+                # Update rolling window with current power usage
+                average_load = update_rolling_loads(current_power)
+
+                # Assess device impact and control devices
+                device_states = assess_device_impact(
+                    current_power=current_power,
+                    threshold_load=MAX_TOTAL_LOAD
+                )
+                for topic, state in device_states.items():
+                    publish_device_state(topic, state)
+
+                # Adjust charging current to accommodate other devices
+                desired_amperage = adjust_charging_for_water_heater(
+                    average_load=average_load,
+                    threshold_load=MAX_TOTAL_LOAD,
+                    current_power=current_power,
+                    water_heater_power=water_heater_power
+                )
+                set_charging_amperage(desired_amperage)
+
+                # Schedule water heater for cheaper periods
+                desired_water_heater_state = schedule_water_heater(prices, current_time, 'off')
+                control_water_heater(desired_water_heater_state)
 
             # Refresh prices at 2 PM
             if current_time.hour == 14 and (current_time - timedelta(minutes=1)).hour != 14:
