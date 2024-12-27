@@ -49,7 +49,7 @@ last_consumption = 0.0  # Initialize last consumption
 LAST_ACTIVITY_TIME = time.time()
 FLOOR_TOPICS = [f"{MQTT_TOPIC}/floor_heating/floor_{i}" for i in range(1, 6)]  # Topics for 5 floors
 FLOOR_WATTAGE = [500, 500, 500, 500, 500]  # Estimated wattage for each floor
-WATER_HEATER_TOPIC = "{MQTT_TOPIC}/water_heater"
+WATER_HEATER_TOPIC = f"{MQTT_TOPIC}/water_heater"
 TOTAL_DEVICES = 6  # 5 floors + 1 water heater
 # Global variable to store rolling load values
 rolling_loads = []
