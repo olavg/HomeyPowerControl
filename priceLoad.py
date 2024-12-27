@@ -365,7 +365,7 @@ def set_charging_amperage_older(amperage):
     last_zaptec_update = now
     logging.info(f"Installation available current set to {amperage}A successfully.")
 
-def set_charging_amperage(amperage):
+def set_charging_amperage_(amperage):
     global last_zaptec_update
     now = datetime.now()
 
