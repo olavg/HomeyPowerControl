@@ -401,7 +401,6 @@ def set_charging_amperage_(amperage):
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
-        amperage = 11
         payload = {
             "maxChargeCurrent": amperage,
             "minChargeCurrent": amperage  # Assuming min and max are set the same for control
