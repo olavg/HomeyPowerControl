@@ -224,7 +224,7 @@ def set_charging_amperage(amperage):
     # Send the request using the generic function
     logging.info(f"Attempting to set installation available current to {amperage}A.")
     try:
-        response = make_api_request(url, method="POST", headers=headers, payload=payload, use_json=True)
+        response = make_api_request(url, method="POST", headers=headers, payload=payload, use_json=False)
         logging.info(f"Installation available current set to {amperage}A successfully.")
     except Exception as e:
         logging.error(f"Failed to set charging amperage: {e}")
