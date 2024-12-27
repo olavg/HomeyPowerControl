@@ -36,7 +36,6 @@ CAR_CHARGER_POWER = 3680  # 16A at 230V ~= 3.7 kW
 LOCAL_TZ = pytz.timezone("Europe/Oslo")
 high_price_threshold = 100
 
-
 def make_api_request(
     url,
     method="GET",
@@ -45,7 +44,8 @@ def make_api_request(
     params=None,
     max_retries=3,
     initial_delay=5,
-    timeout=10
+    timeout=10,
+    use_json=True
 ):
     """
     Make an API request with retry logic.
@@ -59,6 +59,7 @@ def make_api_request(
         max_retries (int): Maximum number of retries for the request. Default is 3.
         initial_delay (int): Initial delay between retries in seconds. Default is 5.
         timeout (int): Request timeout in seconds. Default is 10.
+        use_json (bool): Whether to send the payload as JSON or form-encoded. Default is True.
 
     Returns:
         dict: Parsed JSON response from the API.
@@ -72,10 +73,17 @@ def make_api_request(
         try:
             if method.upper() == "GET":
                 response = requests.get(url, headers=headers, params=params, timeout=timeout)
-            elif method.upper() == "POST":
-                response = requests.post(url, headers=headers, json=payload, timeout=timeout)
-            elif method.upper() == "PUT":
-                response = requests.put(url, headers=headers, json=payload, timeout=timeout)
+            elif method.upper() in ["POST", "PUT"]:
+                # Choose between JSON and form-encoded payload
+                request_args = {"headers": headers, "timeout": timeout}
+                if use_json:
+                    request_args["json"] = payload
+                else:
+                    request_args["data"] = payload
+                if method.upper() == "POST":
+                    response = requests.post(url, **request_args)
+                else:
+                    response = requests.put(url, **request_args)
             elif method.upper() == "DELETE":
                 response = requests.delete(url, headers=headers, timeout=timeout)
             else:
@@ -96,6 +104,7 @@ def make_api_request(
     logging.error(f"All retries failed for API URL: {url}")
     raise Exception(f"Failed to complete {method} request to {url} after {max_retries} attempts.")
 
+
 def get_access_token():
     username = os.getenv("ZAPTEC_USER")
     password = os.getenv("ZAPTEC_PASSWORD")
@@ -113,7 +122,7 @@ def get_access_token():
         "Content-Type": "application/x-www-form-urlencoded"
     }
 
-    return make_api_request(ZAPTEC_AUTH_URL, method="POST", headers=headers, payload=payload)
+    return make_api_request(ZAPTEC_AUTH_URL, method="POST", headers=headers, payload=payload, use_json=False)
 
 def get_access_token_old():
     # Retrieve credentials from environment variables
