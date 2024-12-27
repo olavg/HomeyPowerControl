@@ -275,17 +275,26 @@ def set_charging_amperage(amperage):
     last_zaptec_update = now
 def publish_device_state(topic, state):
     """
-    Publish the desired state of a device to MQTT.
+    Publish the desired state of a device to MQTT with error handling.
 
     Args:
         topic (str): MQTT topic for the device.
         state (str): Desired state ('on' or 'off').
+
+    Returns:
+        bool: True if the state was published successfully, False otherwise.
     """
     try:
-        mqtt_publish(topic, message=state)
-        logging.info(f"Published state '{state}' to topic '{topic}'.")
+        if mqtt_publish(topic, state):
+            logging.info(f"Successfully published state '{state}' to topic '{topic}'.")
+            return True
+        else:
+            logging.error(f"Failed to publish state '{state}' to topic '{topic}'.")
+            return False
     except Exception as e:
-        logging.error(f"Failed to publish state to topic '{topic}': {e}")
+        logging.error(f"Unexpected error while publishing state to topic '{topic}': {e}")
+        return False
+
 
 def assess_device_impact(current_power, threshold_load):
     """
@@ -721,24 +730,50 @@ def schedule_water_heater_old(prices, current_time, water_heater_state, high_pri
 
     return desired_state
 
-def mqtt_publish(topic, message, username=None, password=None):
-    client = mqtt.Client()
+def mqtt_publish(topic, message, broker=MQTT_BROKER, port=1883, username=None, password=None):
+    """
+    Publishes a message to an MQTT topic with error handling.
+
+    Args:
+        topic (str): The MQTT topic to publish to.
+        message (str): The message payload.
+        broker (str): MQTT broker address.
+        port (int): MQTT broker port (default: 1883).
+        username (str): Optional MQTT username.
+        password (str): Optional MQTT password.
+
+    Returns:
+        bool: True if the message was published successfully, False otherwise.
+    """
+    client = mqtt.Client(protocol=mqtt.MQTTv311)
+
+    # Optional authentication
     if username and password:
         client.username_pw_set(username, password)
-    print(f"{MQTT_BROKER}, {MQTT_PORT}")
-    #client.connect(MQTT_BROKER, MQTT_PORT)
-    message = 1
-    client.publish(topic, message)
-    client.disconnect()
+
+    try:
+        client.connect(broker, port)
+        result, mid = client.publish(topic, message)
+
+        if result == mqtt.MQTT_ERR_SUCCESS:
+            logging.info(f"Message '{message}' published to topic '{topic}' successfully.")
+            return True
+        else:
+            logging.error(f"Failed to publish message '{message}' to topic '{topic}'. Return code: {result}")
+            return False
+    except Exception as e:
+        logging.error(f"Failed to publish message '{message}' to topic '{topic}': {e}")
+        return False
+    finally:
+        client.disconnect()
+
 # Control Water Heater via MQTT
 def control_water_heater(state):
     print(state)
-    mqtt_publish(WATER_HEATER_TOPIC, state)
-    try:
-        mqtt_publish(WATER_HEATER_TOPIC, state)
-        logging.info(f"Water heater turned {state}.")
-    except Exception as e:
-        logging.error(f"Failed to control water heater: {e}")
+    if mqtt_publish(WATER_HEATER_TOPIC, state):
+        logging.info(f"Successfully set water heater state to {state}.")
+    else:
+        logging.error(f"Failed to set water heater state to {state}.")
 def charger_settings():
     # Define the API URL for retrieving chargers
     api_url = 'https://api.zaptec.com/api/chargers'
