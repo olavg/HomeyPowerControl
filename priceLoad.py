@@ -107,7 +107,8 @@ def make_api_request(
             logging.error(f"HTTP error occurred: {http_err} (Attempt {attempt + 1})")
         except requests.exceptions.RequestException as req_err:
             logging.error(f"Request error occurred: {req_err} (Attempt {attempt + 1})")
-
+            logging.error(f"Request params: {params}, payload: {payload} ")
+  
         # Wait before retrying
         time.sleep(delay)
         delay *= 2  # Exponential backoff
