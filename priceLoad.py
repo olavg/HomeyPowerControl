@@ -19,6 +19,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 load_dotenv()
 
 # Configuration
+MQTT_TOPIC = "controlPower"
 username = os.getenv('ZAPTEC_USER')
 password = os.getenv('ZAPTEC_PASSWORD')
 ZAPTEC_AUTH_URL = "https://api.zaptec.com/oauth/token"
@@ -46,9 +47,9 @@ last_zaptec_update = None
 water_heater_power = 0.0  # Initialize water heater power consumption
 last_consumption = 0.0  # Initialize last consumption
 LAST_ACTIVITY_TIME = time.time()
-FLOOR_TOPICS = [f"homey/floor_heating/floor_{i}" for i in range(1, 6)]  # Topics for 5 floors
+FLOOR_TOPICS = [f"{MQTT_TOPIC}/floor_heating/floor_{i}" for i in range(1, 6)]  # Topics for 5 floors
 FLOOR_WATTAGE = [500, 500, 500, 500, 500]  # Estimated wattage for each floor
-WATER_HEATER_TOPIC = "homey/water_heater"
+WATER_HEATER_TOPIC = "{MQTT_TOPIC}/water_heater"
 TOTAL_DEVICES = 6  # 5 floors + 1 water heater
 # Global variable to store rolling load values
 rolling_loads = []
