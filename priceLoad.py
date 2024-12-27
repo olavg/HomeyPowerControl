@@ -12,6 +12,9 @@ from entsoe import EntsoePandasClient
 import json
 import logging
 
+# Logging setup
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+
 # Load environment variables
 load_dotenv()
 
@@ -35,6 +38,14 @@ BATTERY_TARGET_KWH = 29  # 50% of a 58 kWh battery
 CAR_CHARGER_POWER = 3680  # 16A at 230V ~= 3.7 kW
 LOCAL_TZ = pytz.timezone("Europe/Oslo")
 high_price_threshold = 100
+
+# Globals
+prices = {}
+cheapest_schedule = []
+last_zaptec_update = None
+water_heater_power = 0.0  # Initialize water heater power consumption
+last_consumption = 0.0  # Initialize last consumption
+LAST_ACTIVITY_TIME = time.time()
 
 def make_api_request(
     url,
@@ -103,8 +114,7 @@ def make_api_request(
 
     logging.error(f"All retries failed for API URL: {url}")
     raise Exception(f"Failed to complete {method} request to {url} after {max_retries} attempts.")
-
-
+###ZAPTEC
 def get_access_token():
     username = os.getenv("ZAPTEC_USER")
     password = os.getenv("ZAPTEC_PASSWORD")
@@ -124,28 +134,19 @@ def get_access_token():
 
     return make_api_request(ZAPTEC_AUTH_URL, method="POST", headers=headers, payload=payload, use_json=False)
 
-def get_access_token_old():
-    # Retrieve credentials from environment variables
-    username = os.getenv("ZAPTEC_USER")
-    password = os.getenv("ZAPTEC_PASSWORD")
-
-    if not username or not password:
-        raise ValueError("Environment variables ZAPTEC_USER and ZAPTEC_PASSWORD must be set")
-
-    payload = {
-        "grant_type": "password",
-        "username": username,
-        "password": password,
-        "scope": "offline_access"
-    }
-    headers = {
-        "Content-Type": "application/x-www-form-urlencoded"
-    }
-    response = requests.post(ZAPTEC_AUTH_URL, data=payload, headers=headers)
-    response.raise_for_status()
-    return response.json()
-
 def refresh_access_token(refresh_token):
+    """
+    Refresh the access token using the refresh token.
+
+    Args:
+        refresh_token (str): The refresh token to use for getting a new access token.
+
+    Returns:
+        dict: The new access and refresh tokens.
+
+    Raises:
+        Exception: If the API call fails after retries.
+    """
     payload = {
         "grant_type": "refresh_token",
         "refresh_token": refresh_token
@@ -153,21 +154,82 @@ def refresh_access_token(refresh_token):
     headers = {
         "Content-Type": "application/x-www-form-urlencoded"
     }
-    response = requests.post(ZAPTEC_AUTH_URL, data=payload, headers=headers)
-    response.raise_for_status()
-    return response.json()
 
+    return make_api_request(ZAPTEC_AUTH_URL, method="POST", headers=headers, payload=payload, use_json=False)
+def get_installations(access_token):
+    """
+    Fetch the list of installations associated with the given access token.
 
-# Logging setup
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+    Args:
+        access_token (str): The access token for API authentication.
 
-# Globals
-prices = {}
-cheapest_schedule = []
-last_zaptec_update = None
-water_heater_power = 0.0  # Initialize water heater power consumption
-last_consumption = 0.0  # Initialize last consumption
-LAST_ACTIVITY_TIME = time.time()
+    Returns:
+        dict: The JSON response containing the list of installations.
+
+    Raises:
+        Exception: If the API call fails after retries.
+    """
+    url = "https://api.zaptec.com/api/installation"
+    headers = {
+        "Authorization": f"Bearer {access_token}"
+    }
+
+    return make_api_request(url, method="GET", headers=headers)
+
+def set_charging_amperage(amperage):
+    """
+    Set the available charging current for the entire installation.
+
+    Args:
+        amperage (int): Desired charging current in amperes.
+
+    Raises:
+        Exception: If the API call fails after retries.
+    """
+    global last_zaptec_update
+    now = datetime.now()
+
+    # Check rate limiting: ensure at least 15 minutes between updates
+    if last_zaptec_update and (now - last_zaptec_update) < timedelta(minutes=15):
+        logging.info("Skipping Zaptec update to comply with rate limiting.")
+        return
+
+    # Fetch access token
+    tokens = get_access_token()
+    access_token = tokens["access_token"]
+
+    # Retrieve installation details
+    installations_response = get_installations(access_token)
+
+    # Ensure installations are available
+    if 'Data' in installations_response and installations_response['Data']:
+        first_installation = installations_response['Data'][0]
+        installation_id = first_installation.get('Id')
+        installation_name = first_installation.get('Name')
+        logging.info(f"First Installation ID: {installation_id}, Name: {installation_name}")
+    else:
+        raise Exception("No installations found or unexpected response format.")
+
+    # API endpoint for updating available current
+    url = ZAPTEC_API_URL.format(installation_id=installation_id)
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "AvailableCurrent": amperage
+    }
+
+    # Send the request using the generic function
+    try:
+        response = make_api_request(url, method="POST", headers=headers, payload=payload, use_json=True)
+        logging.info(f"Installation available current set to {amperage}A successfully.")
+    except Exception as e:
+        logging.error(f"Failed to set charging amperage: {e}")
+        raise
+
+    # Update the timestamp of the last successful update
+    last_zaptec_update = now
 
 # MQTT Handlers
 def on_connect(client, userdata, flags, rc):
@@ -253,17 +315,9 @@ def get_current_power_usage(api_base_url=AMS_METER_API_BASE_URL, timeout=5):
     except Exception as e:
         logging.error(f"Error fetching power usage: {e}")
         return None
-def get_installations(access_token):
-    url = "https://api.zaptec.com/api/installation"
-    headers = {
-        "Authorization": f"Bearer {access_token}"
-    }
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    return response.json()
 
 # Set Zaptec Charging Amperage
-def set_charging_amperage(amperage):
+def set_charging_amperage_old(amperage):
     """
     Set the available charging current for the entire installation.
     """
