@@ -329,13 +329,14 @@ def assess_device_impact_old(current_power, threshold_load):
             device_states[topic] = 'on'
 
     return device_states
-def assess_device_impact(current_power, topics):
+def assess_device_impact(current_power, topics, threshold_load=None):
     """
     Assess the power impact of turning off devices controlled by MQTT topics.
 
     Args:
         current_power (float): Current power usage in watts.
         topics (list): List of MQTT topics to control devices.
+        threshold_load (float, optional): Threshold load to determine if devices should remain off.
 
     Returns:
         dict: Mapping of topics to their desired state ('on' or 'off').
@@ -356,11 +357,16 @@ def assess_device_impact(current_power, topics):
         impact = current_power - new_power
         logging.info(f"Impact of turning off {topic}: {impact:.2f} Watts")
 
-        # Restore the device state
-        publish_device_state(topic, 'on')
-        device_states[topic] = 'on'
+        # Check against the threshold_load if provided
+        if threshold_load is not None and new_power < threshold_load:
+            logging.info(f"Threshold load reached. Turning {topic} back on.")
+            publish_device_state(topic, 'on')
+            device_states[topic] = 'on'
+        else:
+            device_states[topic] = 'off'
 
     return device_states
+
 
 # MQTT Handlers
 def on_connect(client, userdata, flags, rc):
