@@ -220,7 +220,10 @@ def set_charging_amperage(amperage):
     payload = {
         "AvailableCurrent": amperage
     }
-
+    payload = {
+        "maxChargeCurrent": amperage,
+        "minChargeCurrent": amperage  # Setting min and max to the same for consistent control
+    }
     # Send the request using the generic function
     try:
         response = make_api_request(url, method="POST", headers=headers, payload=payload, use_json=True)
