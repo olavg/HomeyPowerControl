@@ -177,7 +177,7 @@ def get_installations(access_token):
 
     return make_api_request(url, method="GET", headers=headers)
 
-def set_charging_amperage(amperage):
+def set_charging_amperage_new(amperage):
     """
     Set the available charging current for the entire installation.
 
@@ -319,7 +319,7 @@ def get_current_power_usage(api_base_url=AMS_METER_API_BASE_URL, timeout=5):
         return None
 
 # Set Zaptec Charging Amperage
-def set_charging_amperage_old(amperage):
+def set_charging_amperage(amperage):
     """
     Set the available charging current for the entire installation.
     """
