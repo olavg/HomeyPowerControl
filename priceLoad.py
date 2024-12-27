@@ -50,6 +50,34 @@ FLOOR_TOPICS = [f"homey/floor_heating/floor_{i}" for i in range(1, 6)]  # Topics
 FLOOR_WATTAGE = [500, 500, 500, 500, 500]  # Estimated wattage for each floor
 WATER_HEATER_TOPIC = "homey/water_heater"
 TOTAL_DEVICES = 6  # 5 floors + 1 water heater
+# Global variable to store rolling load values
+rolling_loads = []
+
+def update_rolling_loads(current_power, window_size=15):
+    """
+    Updates the rolling load values and calculates the average over the last 15 minutes.
+
+    Args:
+        current_power (float): Current power usage in watts.
+        window_size (int): The number of minutes to consider for the rolling average (default: 15).
+
+    Returns:
+        float: The average power usage over the rolling window.
+    """
+    global rolling_loads
+
+    # Add the current power reading to the rolling loads list
+    rolling_loads.append(current_power)
+
+    # Ensure the list doesn't exceed the window size
+    if len(rolling_loads) > window_size:
+        rolling_loads.pop(0)
+
+    # Calculate the average power usage
+    average_load = sum(rolling_loads) / len(rolling_loads)
+
+    logging.info(f"Updated rolling load average: {average_load:.2f} Watts over the last {len(rolling_loads)} minutes.")
+    return average_load
 
 def make_api_request(
     url,
@@ -871,6 +899,44 @@ def main_new_but_old():
     finally:
         client.loop_stop()
         client.disconnect()
+def adjust_charging_for_water_heater(average_load, threshold_load, current_power, water_heater_power, nominal_voltage=230, min_amperage=6, max_amperage=32):
+    """
+    Adjusts the charging amperage for the EV charger based on average load, water heater power,
+    and the total threshold load.
+
+    Args:
+        average_load (float): Average power usage in watts over a rolling window.
+        threshold_load (float): Maximum allowable total load in watts.
+        current_power (float): Current household power usage in watts.
+        water_heater_power (float): Power draw of the water heater in watts.
+        nominal_voltage (int): Nominal voltage in volts (default: 230).
+        min_amperage (int): Minimum allowable charging current in amperes (default: 6).
+        max_amperage (int): Maximum allowable charging current in amperes (default: 32).
+
+    Returns:
+        int: Desired charging amperage within the allowable range.
+    """
+    # Calculate available capacity by subtracting average load and water heater power from the threshold
+    available_capacity = threshold_load - average_load
+
+    # Include water heater power only if it's currently active
+    if water_heater_power > 0:
+        logging.info(f"Including water heater power in calculation: {water_heater_power} W")
+        available_capacity -= water_heater_power
+
+    # Calculate the maximum allowable amperage based on available capacity
+    desired_amperage = available_capacity // nominal_voltage
+
+    # Constrain the desired amperage within the allowed range
+    if desired_amperage < min_amperage:
+        logging.warning(f"Desired amperage ({desired_amperage}A) is below minimum. Using minimum: {min_amperage}A")
+        return min_amperage
+    elif desired_amperage > max_amperage:
+        logging.info(f"Desired amperage ({desired_amperage}A) exceeds maximum. Using maximum: {max_amperage}A")
+        return max_amperage
+
+    logging.info(f"Calculated charging amperage: {int(desired_amperage)}A")
+    return int(desired_amperage)
 
 def main():
     global LAST_ACTIVITY_TIME, water_heater_power
