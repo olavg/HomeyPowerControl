@@ -177,7 +177,7 @@ def get_installations(access_token):
 
     return make_api_request(url, method="GET", headers=headers)
 
-def set_charging_amperage_new(amperage):
+def set_charging_amperage(amperage):
     """
     Set the available charging current for the entire installation.
 
@@ -210,7 +210,7 @@ def set_charging_amperage_new(amperage):
         logging.info(f"First Installation ID: {installation_id}, Name: {installation_name}")
     else:
         raise Exception("No installations found or unexpected response format.")
-
+    amperage=11
     # API endpoint for updating available current
     url = ZAPTEC_API_URL.format(installation_id=installation_id)
     headers = {
