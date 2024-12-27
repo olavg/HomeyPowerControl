@@ -296,7 +296,7 @@ def publish_device_state(topic, state):
         return False
 
 
-def assess_device_impact(current_power, threshold_load):
+def assess_device_impact_old(current_power, threshold_load):
     """
     Turn off devices one by one to measure their impact on the total load.
 
@@ -327,6 +327,38 @@ def assess_device_impact(current_power, threshold_load):
             # Turn the device back on
             publish_device_state(topic, 'on')
             device_states[topic] = 'on'
+
+    return device_states
+def assess_device_impact(current_power, topics):
+    """
+    Assess the power impact of turning off devices controlled by MQTT topics.
+
+    Args:
+        current_power (float): Current power usage in watts.
+        topics (list): List of MQTT topics to control devices.
+
+    Returns:
+        dict: Mapping of topics to their desired state ('on' or 'off').
+    """
+    device_states = {}
+    for topic in topics:
+        # Turn off the device
+        publish_device_state(topic, 'off')
+        time.sleep(5)  # Wait for power reading to stabilize
+
+        # Measure the impact
+        new_power = get_current_power_usage()
+        if new_power is None:
+            logging.warning(f"Power usage could not be fetched for topic {topic}. Skipping...")
+            continue
+
+        # Log the impact
+        impact = current_power - new_power
+        logging.info(f"Impact of turning off {topic}: {impact:.2f} Watts")
+
+        # Restore the device state
+        publish_device_state(topic, 'on')
+        device_states[topic] = 'on'
 
     return device_states
 
@@ -402,7 +434,7 @@ def plan_charging_schedule():
     logging.info(f"Planned charging schedule: {cheapest_schedule}")
 
 # Fetch Current Power Usage
-def get_current_power_usage(api_base_url=AMS_METER_API_BASE_URL, timeout=5):
+def get_current_power_usage_old(api_base_url=AMS_METER_API_BASE_URL, timeout=5):
     endpoint = f"{api_base_url}/data.json"
     try:
         response = requests.get(endpoint, timeout=timeout)
@@ -414,6 +446,30 @@ def get_current_power_usage(api_base_url=AMS_METER_API_BASE_URL, timeout=5):
     except Exception as e:
         logging.error(f"Error fetching power usage: {e}")
         return None
+    
+def get_current_power_usage(api_base_url=AMS_METER_API_BASE_URL, timeout=5, fallback=0.0):
+    """
+    Fetch the current power usage from the AMS Leser HTTP API.
+
+    Args:
+        api_base_url (str): Base URL of the AMS Leser API.
+        timeout (int): Request timeout in seconds.
+        fallback (float): Value to return if the request fails.
+
+    Returns:
+        float: Current power usage in watts or the fallback value.
+    """
+    endpoint = f"{api_base_url}/data.json"
+    try:
+        response = requests.get(endpoint, timeout=timeout)
+        response.raise_for_status()
+        data = response.json()
+        current_power = float(data.get("w", fallback))
+        logging.info(f"Current power usage: {current_power:.2f} Watts")
+        return current_power
+    except requests.RequestException as e:
+        logging.error(f"Error fetching power usage: {e}")
+        return fallback
 
 # Set Zaptec Charging Amperage
 def set_charging_amperage_older(amperage):
