@@ -938,7 +938,7 @@ def adjust_charging_for_water_heater(average_load, threshold_load, current_power
 
     logging.info(f"Calculated charging amperage: {int(desired_amperage)}A")
     return int(desired_amperage)
-def setup_mqtt_client(broker, port=1883, keepalive=60, username=None, password=None):
+def setup_mqtt_client_old(broker, port=1883, keepalive=60, username=None, password=None):
     """
     Sets up and connects an MQTT client with improved error handling and optional authentication.
 
@@ -975,6 +975,71 @@ def setup_mqtt_client(broker, port=1883, keepalive=60, username=None, password=N
             time.sleep(5)  # Retry after a delay
 
     client = mqtt.Client()
+    client.on_connect = on_connect
+    client.on_disconnect = on_disconnect
+    client.on_message = on_message
+
+    # Optional authentication
+    if username and password:
+        client.username_pw_set(username, password)
+
+    # Establish connection with retries
+    connected = False
+    for attempt in range(3):
+        try:
+            client.connect(broker, port, keepalive)
+            connected = True
+            break
+        except Exception as e:
+            logging.error(f"Connection attempt {attempt + 1} failed: {e}")
+            time.sleep(5)
+
+    if not connected:
+        logging.critical("Unable to connect to MQTT broker after multiple attempts. Exiting...")
+        raise ConnectionError("MQTT broker connection failed.")
+
+    client.loop_start()
+    return client
+import paho.mqtt.client as mqtt
+
+def setup_mqtt_client(broker, port=1883, keepalive=60, username=None, password=None):
+    """
+    Sets up and connects an MQTT client with improved error handling, optional authentication,
+    and support for the latest callback API version.
+
+    Args:
+        broker (str): MQTT broker address.
+        port (int): MQTT broker port (default: 1883).
+        keepalive (int): Keepalive interval in seconds (default: 60).
+        username (str): Optional MQTT username.
+        password (str): Optional MQTT password.
+
+    Returns:
+        mqtt.Client: Configured and connected MQTT client.
+    """
+    def on_connect(client, userdata, flags, rc, properties=None):
+        if rc == 0:
+            logging.info("Connected to MQTT broker successfully.")
+        else:
+            logging.error(f"Failed to connect to MQTT broker. Return code: {rc}")
+
+    def on_disconnect(client, userdata, rc):
+        if rc != 0:
+            logging.warning(f"Unexpected disconnection. Reconnecting to MQTT broker...")
+            reconnect_mqtt_client(client)
+
+    def on_message(client, userdata, msg, properties=None):
+        logging.info(f"Received message on topic {msg.topic}: {msg.payload.decode()}")
+
+    def reconnect_mqtt_client(client):
+        try:
+            client.reconnect()
+            logging.info("Reconnected to MQTT broker.")
+        except Exception as e:
+            logging.error(f"Reconnection failed: {e}")
+            time.sleep(5)  # Retry after a delay
+
+    client = mqtt.Client(protocol=mqtt.MQTTv5)  # Use MQTT version 5
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
     client.on_message = on_message
