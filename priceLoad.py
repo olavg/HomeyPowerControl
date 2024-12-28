@@ -220,7 +220,7 @@ def set_charging_amperage(amperage):
     Raises:
         Exception: If the API call fails after retries.
     """
-    global last_zaptec_update
+    global last_zaptec_update, installation_id
     now = datetime.now()
 
     # Check rate limiting: ensure at least 15 minutes between updates
@@ -854,7 +854,88 @@ def charger_settings():
     # Parse the JSON response to extract charger data
     chargers_data = response.json()
     print(json.dumps(chargers_data, indent=4))
-### Car charghing
+
+def get_messaging_connection_details(installation_id):
+    """
+    Retrieves the messaging connection details for a given installation.
+
+    Parameters:
+        installation_id (str): The ID of the installation.
+
+    Returns:
+        dict: Messaging connection details if successful.
+        None: If the request fails.
+    """
+    # Define the API URL for retrieving messaging connection details
+    api_url = f'https://api.zaptec.com/api/installation/{installation_id}/messagingConnectionDetails'
+    
+    # Retrieve the access token
+    tokens = get_access_token()
+    access_token = tokens["access_token"]
+    
+    # Set the headers, including the Authorization header with the bearer token
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Accept': 'application/json'
+    }
+    
+    try:
+        # Make the GET request to retrieve messaging connection details
+        response = requests.get(api_url, headers=headers)
+        response.raise_for_status()  # Raise an error for bad status codes
+        
+        # Parse the JSON response to extract connection details
+        connection_details = response.json()
+        return connection_details
+    
+    except requests.exceptions.HTTPError as http_err:
+        print(f'HTTP error occurred: {http_err}')
+    except Exception as err:
+        print(f'An error occurred: {err}')
+    
+    return None
+
+def get_user_group_messaging_connection_details(user_group_id):
+    """
+    Retrieves the messaging connection details for a given user group.
+
+    Parameters:
+        user_group_id (str): The ID of the user group.
+
+    Returns:
+        dict: Messaging connection details if successful.
+        None: If the request fails.
+    """
+    # Define the API URL for retrieving messaging connection details
+    api_url = f'https://api.zaptec.com/api/userGroups/{user_group_id}/messagingConnectionDetails'
+    
+    # Retrieve the access token
+    tokens = get_access_token()
+    access_token = tokens["access_token"]
+    
+    # Set the headers, including the Authorization header with the bearer token
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Accept': 'application/json'
+    }
+    
+    try:
+        # Make the GET request to retrieve messaging connection details
+        response = requests.get(api_url, headers=headers)
+        response.raise_for_status()  # Raise an error for bad status codes
+        
+        # Parse the JSON response to extract connection details
+        connection_details = response.json()
+        return connection_details
+    
+    except requests.exceptions.HTTPError as http_err:
+        print(f'HTTP error occurred: {http_err}')
+    except Exception as err:
+        print(f'An error occurred: {err}')
+    
+    return None
+
+### Car charging
 def manage_car_charging(current_time, current_house_load, current_price, high_price_threshold, max_total_load=MAX_TOTAL_LOAD):
     """
     Manage car charging based on current load, price, and user happiness.
@@ -884,7 +965,6 @@ def manage_car_charging(current_time, current_house_load, current_price, high_pr
     return desired_amperage
 
 # Main Function
-
 
 def main_old():
     global LAST_ACTIVITY_TIME, water_heater_power
@@ -989,6 +1069,7 @@ def main_new_but_old():
 
             # Log charger settings (optional)
             charger_settings()
+            get_messaging_connection_details(installation_id)
 
             time.sleep(60)  # Check every minute
 
@@ -997,6 +1078,7 @@ def main_new_but_old():
     finally:
         client.loop_stop()
         client.disconnect()
+
 def adjust_charging_for_water_heater(average_load, threshold_load, current_power, water_heater_power, nominal_voltage=230, min_amperage=6, max_amperage=32):
     """
     Adjusts the charging amperage for the EV charger based on average load, water heater power,
