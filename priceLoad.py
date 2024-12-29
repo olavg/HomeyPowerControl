@@ -402,8 +402,13 @@ def assess_device_impact(current_power, topics, threshold_load=None):
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
         logging.info("Connected to MQTT broker.")
-        client.subscribe("ams/meter/import/active")
-        client.subscribe("home/water_heater/power")  # Subscribe to water heater power topic
+        topics = [
+            "ams/meter/import/active",
+            "home/water_heater/power"
+        ]
+        for topic in topics:
+            client.subscribe(topic)
+            logging.info(f"Subscribed to topic: {topic}")
     else:
         logging.error(f"Connection failed with code {rc}")
 
@@ -412,7 +417,12 @@ def on_message(client, userdata, msg):
     LAST_ACTIVITY_TIME = time.time()
     try:
         topic = msg.topic
-        payload = float(msg.payload.decode("utf-8"))
+        payload = msg.payload.decode("utf-8")
+        try:
+            payload = float(payload)
+        except ValueError:
+            logging.warning(f"Non-numeric payload received on topic {topic}: {payload}")
+            return
 
         if topic.startswith("ams/price/"):
             hour = topic.split("/")[-1]
@@ -424,8 +434,17 @@ def on_message(client, userdata, msg):
         elif topic == "home/water_heater/power":
             water_heater_power = payload
             logging.info(f"Water heater power consumption: {payload:.2f} Watts")
-    except ValueError as e:
-        logging.warning(f"Error processing message: {e}")
+    except Exception as e:
+        logging.warning(f"Unexpected error processing message on topic {msg.topic}: {e}")
+
+def on_disconnect(client, userdata, rc):
+    logging.warning(f"Disconnected with return code {rc}. Attempting to reconnect...")
+    if rc != 0:
+        try:
+            client.reconnect()
+        except Exception as e:
+            logging.error(f"Reconnection failed: {e}")
+
 
 # Exponential Backoff Retry
 def exponential_backoff_retry(func, max_retries=3, initial_delay=5):
