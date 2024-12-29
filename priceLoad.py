@@ -1146,9 +1146,9 @@ def adjust_charging_for_water_heater(average_load, threshold_load, current_power
     available_capacity = threshold_load - average_load
 
     # Include water heater power only if it's currently active
-    if water_heater_power > 0:
-        logging.info(f"Including water heater power in calculation: {water_heater_power} W")
-        available_capacity -= water_heater_power
+    #if water_heater_power > 0:
+    #    logging.info(f"Including water heater power in calculation: {water_heater_power} W")
+    #    available_capacity -= water_heater_power
 
     # Calculate the maximum allowable amperage based on available capacity
     desired_amperage = available_capacity // nominal_voltage
