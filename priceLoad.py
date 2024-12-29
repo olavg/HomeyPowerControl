@@ -1246,7 +1246,7 @@ def setup_mqtt_client(broker, port=1883, keepalive=60, username=None, password=N
             logging.error(f"Reconnection failed: {e}")
             time.sleep(5)  # Retry after a delay
 
-    client = mqtt.Client(protocol=mqtt.MQTTv3)  # Use MQTT version 3
+    client = mqtt.Client(protocol=mqtt.MQTTv311)  # Use MQTT version 3
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
     client.on_message = on_message
