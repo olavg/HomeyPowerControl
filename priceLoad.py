@@ -18,6 +18,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 # Load environment variables
 load_dotenv()
 
+#mqtt v311
+client = mqtt.Client(protocol=mqtt.MQTTv311) 
+
 # Configuration
 MQTT_TOPIC = "controlPower"
 username = os.getenv('ZAPTEC_USER')
@@ -834,7 +837,6 @@ def mqtt_publish(topic, message, broker=MQTT_BROKER, port=1883, username=None, p
     Returns:
         bool: True if the message was published successfully, False otherwise.
     """
-    client = mqtt.Client(protocol=mqtt.MQTTv311)
 
     # Optional authentication
     if username and password:
@@ -998,7 +1000,6 @@ def main_old():
     water_heater_power = 0.0  # Initialize water_heater_power
 
     # MQTT Client Setup
-    client = mqtt.Client()
     client.on_connect = on_connect
     client.on_message = on_message
     client.connect(MQTT_BROKER, 1883, 60)
@@ -1051,7 +1052,6 @@ def main_new_but_old():
     water_heater_power = 0.0  # Initialize water_heater_power
 
     # MQTT Client Setup
-    client = mqtt.Client()
     client.on_connect = on_connect
     client.on_message = on_message
     client.connect(MQTT_BROKER, 1883, 60)
@@ -1181,7 +1181,6 @@ def setup_mqtt_client(broker, port=1883, keepalive=60, username=None, password=N
             logging.error(f"Reconnection failed: {e}")
             time.sleep(5)  # Retry after a delay
 
-    client = mqtt.Client(protocol=mqtt.MQTTv311)  # Use MQTT version 3.1.1
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
     client.on_message = on_message
@@ -1246,7 +1245,6 @@ def setup_mqtt_client(broker, port=1883, keepalive=60, username=None, password=N
             logging.error(f"Reconnection failed: {e}")
             time.sleep(5)  # Retry after a delay
 
-    client = mqtt.Client(protocol=mqtt.MQTTv311)  # Use MQTT version 3
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
     client.on_message = on_message
