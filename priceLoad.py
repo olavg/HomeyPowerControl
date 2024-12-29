@@ -29,7 +29,12 @@ CHARGER_ID = os.getenv("ZAPTEC_CHARGER_ID")
 ENTSOE_API_KEY = os.getenv("ENTSOE_API_KEY")
 MQTT_BROKER = os.getenv("MQTT_BROKER", "192.168.86.54")
 MQTT_PORT = "1883"
-WATER_HEATER_TOPIC = "control/water_heater"
+TOTAL_DEVICES = 6  # 5 floors + 1 water heater
+WATER_HEATER_TOPIC = "{MQTT_TOPIC}/water_heater"
+WATER_HEATER_POWER_TOPIC = "{WATER_HEATER_TOPIC}/power"
+WATER_HEATER_PRIORITY_THRESHOLD = 20 * 60  # 20 minutes in seconds
+FLOOR_TOPICS = [f"{MQTT_TOPIC}/floor_heating/floor_{i}" for i in range(1, 6)]  # Topics for 5 floors
+FLOOR_WATTAGE = [500, 500, 500, 500, 500]  # Estimated wattage for each floor
 AMS_METER_API_BASE_URL = "http://192.168.86.34"
 MAX_TOTAL_LOAD = 10000  # Maximum household load in watts
 NOMINAL_VOLTAGE = 230  # Voltage in volts
@@ -47,13 +52,35 @@ last_zaptec_update = None
 water_heater_power = 0.0  # Initialize water heater power consumption
 last_consumption = 0.0  # Initialize last consumption
 LAST_ACTIVITY_TIME = time.time()
-FLOOR_TOPICS = [f"{MQTT_TOPIC}/floor_heating/floor_{i}" for i in range(1, 6)]  # Topics for 5 floors
-FLOOR_WATTAGE = [500, 500, 500, 500, 500]  # Estimated wattage for each floor
-WATER_HEATER_TOPIC = f"{MQTT_TOPIC}/water_heater"
-TOTAL_DEVICES = 6  # 5 floors + 1 water heater
+water_heater_active_since = None
+water_heater_power = 0.0  # Initialize water_heater_power
 # Global variable to store rolling load values
 rolling_loads = []
 
+def track_water_heater_priority(water_heater_power):
+    """
+    Track the water heater's power draw duration and prioritize it if necessary.
+
+    Args:
+        water_heater_power (float): Current power draw of the water heater in Watts.
+
+    Returns:
+        bool: True if the water heater should be prioritized, False otherwise.
+    """
+    global water_heater_active_since
+
+    if water_heater_power > 0:  # Water heater is drawing power
+        if water_heater_active_since is None:
+            water_heater_active_since = time.time()  # Start tracking
+        else:
+            elapsed_time = time.time() - water_heater_active_since
+            if elapsed_time >= WATER_HEATER_PRIORITY_THRESHOLD:
+                print("Water heater needs prioritization due to prolonged usage.")
+                return True
+    else:  # Water heater is not drawing power
+        water_heater_active_since = None  # Reset tracking
+
+    return False
 def update_rolling_loads(current_power, window_size=15):
     """
     Updates the rolling load values and calculates the average over the last 15 minutes.
@@ -1267,11 +1294,15 @@ def main():
             current_time = datetime.now(LOCAL_TZ)
             current_power = get_current_power_usage()
             logging.info(f"Current power usage: {current_power} Watts")
-
+            # Check water heater priority
+            prioritize_water_heater = track_water_heater_priority(water_heater_power)
+            
             if current_power is not None:
                 # Update rolling window with current power usage
                 average_load = update_rolling_loads(current_power)
-
+                if prioritize_water_heater:
+                    print("Prioritizing water heater; reducing charging load.")
+                    ###not implemented
                 # Assess device impact and control devices
                 device_states = assess_device_impact(
                     current_power=current_power,
