@@ -325,7 +325,7 @@ def publish_device_state(topic, state):
         logging.error(f"Unexpected error while publishing state to topic '{topic}': {e}")
         return False
 
-def assess_device_impact(current_power, topics, mqtt_client=client, threshold_load=None):
+def assess_device_impact_new(current_power, topics, mqtt_client=client, threshold_load=None):
     """
     Assess the power impact of devices based on their current MQTT states and track watts per floor.
 
@@ -397,7 +397,7 @@ def assess_device_impact(current_power, topics, mqtt_client=client, threshold_lo
 
     return device_states, floor_watts
 
-def assess_device_impact_old(current_power, topics, threshold_load=None):
+def assess_device_impact(current_power, topics, threshold_load=None):
     """
     Assess the power impact of turning off devices controlled by MQTT topics.
 
@@ -1030,7 +1030,6 @@ def main():
                 device_states = assess_device_impact(
                     current_power=current_power,
                     topics=FLOOR_TOPICS + [WATER_HEATER_TOPIC],
-                    mqtt_client=client,
                     threshold_load=MAX_TOTAL_LOAD
                 )
                 for topic, state in device_states.items():
