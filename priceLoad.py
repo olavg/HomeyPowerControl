@@ -325,40 +325,6 @@ def publish_device_state(topic, state):
         logging.error(f"Unexpected error while publishing state to topic '{topic}': {e}")
         return False
 
-
-def assess_device_impact_old(current_power, threshold_load):
-    """
-    Turn off devices one by one to measure their impact on the total load.
-
-    Args:
-        current_power (float): Current house power usage in watts.
-        threshold_load (float): Threshold for the maximum allowable load in watts.
-
-    Returns:
-        dict: Device states indicating 'on' or 'off' for each floor and the water heater.
-    """
-    device_states = {topic: 'on' for topic in FLOOR_TOPICS + [WATER_HEATER_TOPIC]}
-
-    for i, topic in enumerate(FLOOR_TOPICS + [WATER_HEATER_TOPIC]):
-        # Turn off the device
-        publish_device_state(topic, 'off')
-        time.sleep(10)  # Wait 10 seconds to observe the impact on power usage
-
-        # Get updated power usage
-        new_power = get_current_power_usage()
-        logging.info(f"Impact of turning off {topic}: {current_power - new_power:.2f} Watts")
-
-        # Check if load is below threshold
-        if new_power < threshold_load:
-            logging.info(f"Threshold achieved by turning off {topic}.")
-            device_states[topic] = 'off'
-            break  # Stop turning off more devices
-        else:
-            # Turn the device back on
-            publish_device_state(topic, 'on')
-            device_states[topic] = 'on'
-
-    return device_states
 def assess_device_impact(current_power, topics, threshold_load=None):
     """
     Assess the power impact of turning off devices controlled by MQTT topics.
@@ -489,19 +455,7 @@ def plan_charging_schedule():
     logging.info(f"Planned charging schedule: {cheapest_schedule}")
 
 # Fetch Current Power Usage
-def get_current_power_usage_old(api_base_url=AMS_METER_API_BASE_URL, timeout=5):
-    endpoint = f"{api_base_url}/data.json"
-    try:
-        response = requests.get(endpoint, timeout=timeout)
-        response.raise_for_status()
-        data = response.json()
-        current_power = float(data.get("w", 0.0))
-        logging.info(f"Current power usage: {current_power} Watts")
-        return current_power
-    except Exception as e:
-        logging.error(f"Error fetching power usage: {e}")
-        return None
-    
+  
 def get_current_power_usage(api_base_url=AMS_METER_API_BASE_URL, timeout=5, fallback=0.0):
     """
     Fetch the current power usage from the AMS Leser HTTP API.
@@ -525,95 +479,6 @@ def get_current_power_usage(api_base_url=AMS_METER_API_BASE_URL, timeout=5, fall
     except requests.RequestException as e:
         logging.error(f"Error fetching power usage: {e}")
         return fallback
-
-# Set Zaptec Charging Amperage
-def set_charging_amperage_older(amperage):
-    """
-    Set the available charging current for the entire installation.
-    """
-    global last_zaptec_update
-    now = datetime.now()
-
-    # Check rate limiting: ensure at least 15 minutes between updates
-    if last_zaptec_update and (now - last_zaptec_update) < timedelta(minutes=15):
-        logging.info("Skipping Zaptec update to comply with rate limiting.")
-        return
-
-    def api_call():
-        tokens = get_access_token()
-        access_token = tokens["access_token"]
-        print(access_token)
-        installations_response = get_installations(access_token)
-        print(installations_response)
-        # Check if 'Data' key exists and contains installations
-        if 'Data' in installations_response and installations_response['Data']:
-            first_installation = installations_response['Data'][0]
-            installation_id = first_installation.get('Id')
-            installation_name = first_installation.get('Name')
-            print(f"First Installation ID: {installation_id}, Name: {installation_name}")
-        else:
-            print("No installations found or unexpected response format.")
-        url = ZAPTEC_API_URL.format(installation_id=installation_id)
-
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-                "AvailableCurrent": amperage
-            }
-        response = requests.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        return response
-
-    # Attempt the API call with exponential backoff
-    exponential_backoff_retry(api_call)
-
-    # Update the timestamp of the last successful update
-    last_zaptec_update = now
-    logging.info(f"Installation available current set to {amperage}A successfully.")
-
-def set_charging_amperage_(amperage):
-    global last_zaptec_update
-    now = datetime.now()
-
-    # Check rate limiting: ensure at least 15 minutes between updates
-    if last_zaptec_update and (now - last_zaptec_update) < timedelta(minutes=15):
-        logging.info("Skipping Zaptec update to comply with rate limiting.")
-        return
-
-    def api_call():
-        try:            # Fetch the initial access token
-            tokens = get_access_token()
-            access_token = tokens["access_token"]
-            refresh_token = tokens["refresh_token"]
-
-            print("Access Token:", access_token)
-            print("Refresh Token:", refresh_token)
-
-            # Example: Refresh the access token
-            new_tokens = refresh_access_token(refresh_token)
-        except:
-            pass
-        url = ZAPTEC_API_URL.format(charger_id=CHARGER_ID)
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "maxChargeCurrent": amperage,
-            "minChargeCurrent": amperage  # Assuming min and max are set the same for control
-        }
-        response = requests.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        return response
-
-    # Attempt the API call with exponential backoff
-    exponential_backoff_retry(api_call)
-
-    # Update the timestamp of the last successful update
-    last_zaptec_update = now
-    logging.info(f"Charging amperage set to {amperage}A successfully.")
 
 # Calculate Desired Amperage
 def calculate_desired_amperage(current_power_usage, water_heater_power, max_total_load=MAX_TOTAL_LOAD, nominal_voltage=NOMINAL_VOLTAGE, min_amperage=MIN_AMPERAGE, max_amperage=MAX_AMPERAGE):
@@ -647,49 +512,6 @@ def calculate_desired_amperage(current_power_usage, water_heater_power, max_tota
         return max_amperage
     else:
         return int(desired_amperage)
-
-# Schedule Water Heater
-def schedule_water_heater_old(prices, current_time, water_heater_state):
-    """
-    Schedule the water heater operation based on electricity prices and time of day.
-
-    Args:
-        prices (dict): Dictionary with hour as key and price as value.
-        current_time (datetime): Current datetime object.
-        water_heater_state (str): Current state of the water heater; 'on' or 'off'.
-
-    Returns:
-        str: Desired state of the water heater; 'on' or 'off'.
-    """
-    # Define time ranges
-    morning_deadline = current_time.replace(hour=7, minute=0, second=0, microsecond=0)
-    afternoon_deadline = current_time.replace(hour=15, minute=0, second=0, microsecond=0)
-
-    # Determine if heating is needed based on time
-    if current_time < morning_deadline:
-        target_deadline = morning_deadline
-    elif current_time < afternoon_deadline:
-        target_deadline = afternoon_deadline
-    else:
-        target_deadline = None
-
-    if target_deadline:
-        # Calculate remaining time until the target deadline
-        time_remaining = (target_deadline - current_time).total_seconds() / 3600  # in hours
-
-        # Determine the cheapest hour within the remaining time
-        current_hour = current_time.hour
-        upcoming_hours = {hour: price for hour, price in prices.items() if current_hour <= int(hour) < current_hour + time_remaining}
-        if upcoming_hours:
-            cheapest_hour = min(upcoming_hours, key=upcoming_hours.get)
-            if int(cheapest_hour) == current_hour:
-                return 'on'
-            else:
-                return 'off'
-        else:
-            return 'off'
-    else:
-        return 'off'
 
 def schedule_water_heater(prices, current_time, water_heater_state, high_price_threshold=100):
     # Initialize variables
@@ -763,82 +585,6 @@ def schedule_water_heater(prices, current_time, water_heater_state, high_price_t
     current_hour = current_time.hour
     desired_state = schedule.get(current_hour, water_heater_state)
     print(desired_state)
-    return desired_state
-
-def schedule_water_heater_old(prices, current_time, water_heater_state, high_price_threshold = 100):
-    """
-    Schedule the water heater operation based on electricity prices and time constraints.
-
-    Args:
-        prices (dict): Dictionary with hour (0-23) as key and price as value.
-        current_time (datetime): Current datetime object.
-        water_heater_state (str): Current state of the water heater; 'on' or 'off'.
-        high_price_threshold (float): Price threshold above which the water heater should be turned off during the day.
-
-    Returns:
-        str: Desired state of the water heater; 'on' or 'off'.
-    """
-    # Initialize variables
-    total_on_hours = 0
-    evening_off_hours = 0
-    consecutive_off_hours = 0
-    schedule = {}
-
-    # Define time periods
-    evening_start = 16
-    evening_end = 23
-    night_start = 23
-    night_end = 7
-    day_start = 7
-    day_end = 16
-
-    # Evening scheduling (16:00 - 23:00)
-    for hour in range(evening_start, evening_end + 1):
-        if prices[hour] > high_price_threshold and evening_off_hours < 3 and consecutive_off_hours < 1:
-            schedule[hour] = 'off'
-            evening_off_hours += 1
-            consecutive_off_hours += 1
-        else:
-            schedule[hour] = 'on'
-            total_on_hours += 1
-            consecutive_off_hours = 0
-
-    # Night scheduling (23:00 - 07:00)
-    for hour in range(night_start, 24):
-        schedule[hour] = 'on'
-        total_on_hours += 1
-    for hour in range(0, night_end):
-        schedule[hour] = 'on'
-        total_on_hours += 1
-
-    # Ensure 2 hours on before 07:00
-    if schedule[5] == 'off' and schedule[6] == 'off':
-        schedule[5] = 'on'
-        schedule[6] = 'on'
-        total_on_hours += 2
-
-    # Daytime scheduling (07:00 - 16:00)
-    for hour in range(day_start, day_end):
-        if prices[hour] > high_price_threshold:
-            schedule[hour] = 'off'
-        else:
-            schedule[hour] = 'on'
-            total_on_hours += 1
-
-    # Ensure minimum 12 hours of operation
-    if total_on_hours < 12:
-        additional_hours_needed = 12 - total_on_hours
-        # Turn on during the cheapest off hours
-        off_hours = [hour for hour, state in schedule.items() if state == 'off']
-        off_hours.sort(key=lambda x: prices[x])
-        for hour in off_hours[:additional_hours_needed]:
-            schedule[hour] = 'on'
-            total_on_hours += 1
-
-    # Determine the desired state for the current hour
-    current_hour = current_time.hour
-    desired_state = schedule.get(current_hour, water_heater_state)
-
     return desired_state
 
 def mqtt_publish(topic, message, broker=MQTT_BROKER, port=1883, username=None, password=None):
@@ -1012,119 +758,6 @@ def manage_car_charging(current_time, current_house_load, current_price, high_pr
     logging.info(f"Setting charging to {desired_amperage}A based on available power and price.")
     return desired_amperage
 
-# Main Function
-
-def main_old():
-    global LAST_ACTIVITY_TIME, water_heater_power
-    water_heater_power = 0.0  # Initialize water_heater_power
-
-    # MQTT Client Setup
-    client.on_connect = on_connect
-    client.on_message = on_message
-    client.connect(MQTT_BROKER, 1883, 60)
-    client.loop_start()
-
-    # Fetch initial prices and plan schedule
-    fetch_entsoe_prices()
-    plan_charging_schedule()
-
-    try:
-        while True:
-            current_time = datetime.now(LOCAL_TZ)
-            current_power = get_current_power_usage()
-            print(prices)
-            if current_power is not None:
-                # Calculate desired charging amperage
-                desired_amperage = calculate_desired_amperage(current_power, water_heater_power)
-
-                # Determine if current hour is in the cheapest schedule
-                hour_key = f"{current_time.day}-{current_time.hour}"
-                if hour_key in dict(cheapest_schedule):
-                    set_charging_amperage(desired_amperage)
-                    logging.info(f"Charging active: {desired_amperage}A during cheap hour {hour_key}")
-                else:
-                    set_charging_amperage(MIN_AMPERAGE)
-                    logging.info(f"Not a charging hour. Setting amperage to minimum.")
-
-                # Schedule water heater
-                desired_water_heater_state = schedule_water_heater(prices, current_time, 'off')
-                print(desired_water_heater_state)
-                control_water_heater(desired_water_heater_state)
-
-            # Refresh prices at 2 PM
-            if current_time.hour == 14 and (current_time - timedelta(minutes=1)).hour != 14:
-                fetch_entsoe_prices()
-                plan_charging_schedule()
-
-            charger_settings()
-            time.sleep(60)  # Check every minute
-
-    except KeyboardInterrupt:
-        logging.info("Script terminated by user.")
-    finally:
-        client.loop_stop()
-        client.disconnect()
-
-# Main Function
-def main_new_but_old():
-    global LAST_ACTIVITY_TIME, water_heater_power
-    water_heater_power = 0.0  # Initialize water_heater_power
-
-    # MQTT Client Setup
-    client.on_connect = on_connect
-    client.on_message = on_message
-    client.connect(MQTT_BROKER, 1883, 60)
-    client.loop_start()
-
-    # Fetch initial prices and plan schedule
-    fetch_entsoe_prices()
-    plan_charging_schedule()
-
-    try:
-        while True:
-            current_time = datetime.now(LOCAL_TZ)
-            current_power = get_current_power_usage()
-            logging.info(f"Current power usage: {current_power} Watts")
-
-            if current_power is not None:
-                # Fetch current price for the hour
-                hour_key = f"{current_time.day}-{current_time.hour}"
-                current_price = prices.get(hour_key, 0)
-                logging.info(f"Current electricity price: {current_price}")
-
-                # Manage car charging dynamically
-                desired_amperage = manage_car_charging(
-                    current_time=current_time,
-                    current_house_load=current_power,
-                    current_price=current_price,
-                    high_price_threshold=high_price_threshold,
-                    max_total_load=MAX_TOTAL_LOAD
-                )
-                set_charging_amperage(desired_amperage)
-                logging.info(f"Charging amperage set to: {desired_amperage}A")
-
-                # Schedule water heater
-                desired_water_heater_state = schedule_water_heater(prices, current_time, 'off', high_price_threshold)
-                control_water_heater(desired_water_heater_state)
-                logging.info(f"Water heater state set to: {desired_water_heater_state}")
-
-            # Refresh prices at 2 PM
-            if current_time.hour == 14 and (current_time - timedelta(minutes=1)).hour != 14:
-                fetch_entsoe_prices()
-                plan_charging_schedule()
-
-            # Log charger settings (optional)
-            charger_settings()
-            get_messaging_connection_details(installation_id)
-
-            time.sleep(60)  # Check every minute
-
-    except KeyboardInterrupt:
-        logging.info("Script terminated by user.")
-    finally:
-        client.loop_stop()
-        client.disconnect()
-
 def adjust_charging_for_water_heater(average_load, threshold_load, current_power, water_heater_power, nominal_voltage=230, min_amperage=6, max_amperage=32):
     """
     Adjusts the charging amperage for the EV charger based on average load, water heater power,
@@ -1227,7 +860,7 @@ def setup_mqtt_client(broker, port=1883, keepalive=60, username=None, password=N
     return client
 
 
-def setup_mqtt_client(broker, port=1883, keepalive=60, username=None, password=None):
+def setup_mqtt_client___(broker, port=1883, keepalive=60, username=None, password=None):
     """
     Sets up and connects an MQTT client with improved error handling, optional authentication,
     and support for the latest callback API version.
@@ -1290,6 +923,7 @@ def setup_mqtt_client(broker, port=1883, keepalive=60, username=None, password=N
     client.loop_start()
     return client
 
+# Main Function
 
 def main():
     global LAST_ACTIVITY_TIME, water_heater_power
