@@ -324,19 +324,61 @@ def publish_device_state(topic, state):
     except Exception as e:
         logging.error(f"Unexpected error while publishing state to topic '{topic}': {e}")
         return False
-def assess_device_impact(current_power, topics, mqtt_states, threshold_load=None):
+
+Here’s an updated version of the function that introduces a variable to track the power consumption (in watts) for each floor. This allows you to assess the impact of each floor individually, giving you better granularity in managing power consumption.
+
+Updated Function with Power Tracking per Floor
+import time
+import logging
+import paho.mqtt.client as mqtt
+
+def assess_device_impact(current_power, topics, mqtt_client=client, threshold_load=None):
     """
-    Assess the power impact of devices based on their current MQTT states.
+    Assess the power impact of devices based on their current MQTT states and track watts per floor.
 
     Args:
-        current_power (float): Current power usage in watts.
+        current_power (float): Current total power usage in watts.
         topics (list): List of MQTT topics for devices.
-        mqtt_states (dict): Current states of devices from MQTT (topic: state mapping, 0/1).
+        mqtt_client (mqtt.Client): An active MQTT client to fetch states.
         threshold_load (float, optional): Threshold load to determine if devices should remain off.
 
     Returns:
         dict: Mapping of topics to their desired state ('on' or 'off').
+        dict: Mapping of topics to their respective power consumption in watts.
     """
+
+    # Dictionary to store the power consumption of each floor
+    floor_watts = {topic: 0 for topic in topics}
+
+    # Dictionary to store the current state of each device
+    mqtt_states = {}
+
+    def on_message(client, userdata, msg):
+        """Callback for processing received messages."""
+        try:
+            state = int(msg.payload.decode("utf-8"))
+            mqtt_states[msg.topic] = state
+            # Example: Assign wattage per topic dynamically (customize as needed)
+            if state == 1:  # If the device is on
+                floor_watts[msg.topic] = 500  # Example: 500 watts per active floor
+            else:
+                floor_watts[msg.topic] = 0
+            logging.info(f"Received state from {msg.topic}: {state}, Power: {floor_watts[msg.topic]} Watts")
+        except ValueError:
+            logging.warning(f"Non-numeric state received from {msg.topic}: {msg.payload.decode('utf-8')}")
+
+    # Subscribe to all topics and wait for responses
+    mqtt_client.on_message = on_message
+    for topic in topics:
+        mqtt_client.subscribe(topic)
+        logging.info(f"Subscribed to {topic}")
+
+    # Allow time to receive messages
+    mqtt_client.loop_start()
+    time.sleep(2)  # Adjust timeout as needed for all messages to be received
+    mqtt_client.loop_stop()
+
+    # Process states and assess device impacts
     device_states = {}
     for topic in topics:
         current_state = mqtt_states.get(topic, None)
@@ -346,9 +388,9 @@ def assess_device_impact(current_power, topics, mqtt_states, threshold_load=None
 
         # Calculate power impact based on the current state
         if current_state == 1:  # Device is on
-            logging.info(f"Device {topic} is currently on.")
-            estimated_impact = current_power * 0.1  # Example calculation for impact
-            logging.info(f"Estimated impact of turning off {topic}: {estimated_impact:.2f} Watts")
+            logging.info(f"Device {topic} is currently on, consuming {floor_watts[topic]} Watts.")
+            estimated_impact = floor_watts[topic]  # Impact is the floor's power consumption
+            logging.info(f"Impact of turning off {topic}: {estimated_impact:.2f} Watts")
 
             # Check against the threshold_load if provided
             if threshold_load is not None and (current_power - estimated_impact) < threshold_load:
@@ -360,7 +402,7 @@ def assess_device_impact(current_power, topics, mqtt_states, threshold_load=None
             logging.info(f"Device {topic} is already off.")
             device_states[topic] = 'off'
 
-    return device_states
+    return device_states, floor_watts
 
 def assess_device_impact_old(current_power, topics, threshold_load=None):
     """
