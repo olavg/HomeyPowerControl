@@ -325,13 +325,6 @@ def publish_device_state(topic, state):
         logging.error(f"Unexpected error while publishing state to topic '{topic}': {e}")
         return False
 
-Here’s an updated version of the function that introduces a variable to track the power consumption (in watts) for each floor. This allows you to assess the impact of each floor individually, giving you better granularity in managing power consumption.
-
-Updated Function with Power Tracking per Floor
-import time
-import logging
-import paho.mqtt.client as mqtt
-
 def assess_device_impact(current_power, topics, mqtt_client=client, threshold_load=None):
     """
     Assess the power impact of devices based on their current MQTT states and track watts per floor.
