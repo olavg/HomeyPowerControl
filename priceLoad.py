@@ -324,8 +324,45 @@ def publish_device_state(topic, state):
     except Exception as e:
         logging.error(f"Unexpected error while publishing state to topic '{topic}': {e}")
         return False
+def assess_device_impact(current_power, topics, mqtt_states, threshold_load=None):
+    """
+    Assess the power impact of devices based on their current MQTT states.
 
-def assess_device_impact(current_power, topics, threshold_load=None):
+    Args:
+        current_power (float): Current power usage in watts.
+        topics (list): List of MQTT topics for devices.
+        mqtt_states (dict): Current states of devices from MQTT (topic: state mapping, 0/1).
+        threshold_load (float, optional): Threshold load to determine if devices should remain off.
+
+    Returns:
+        dict: Mapping of topics to their desired state ('on' or 'off').
+    """
+    device_states = {}
+    for topic in topics:
+        current_state = mqtt_states.get(topic, None)
+        if current_state is None:
+            logging.warning(f"State for topic {topic} is unavailable. Skipping...")
+            continue
+
+        # Calculate power impact based on the current state
+        if current_state == 1:  # Device is on
+            logging.info(f"Device {topic} is currently on.")
+            estimated_impact = current_power * 0.1  # Example calculation for impact
+            logging.info(f"Estimated impact of turning off {topic}: {estimated_impact:.2f} Watts")
+
+            # Check against the threshold_load if provided
+            if threshold_load is not None and (current_power - estimated_impact) < threshold_load:
+                logging.info(f"Threshold load reached. Keeping {topic} on.")
+                device_states[topic] = 'on'
+            else:
+                device_states[topic] = 'off'
+        else:  # Device is off
+            logging.info(f"Device {topic} is already off.")
+            device_states[topic] = 'off'
+
+    return device_states
+
+def assess_device_impact_old(current_power, topics, threshold_load=None):
     """
     Assess the power impact of turning off devices controlled by MQTT topics.
 
